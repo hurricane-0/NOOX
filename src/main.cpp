@@ -13,6 +13,7 @@
 #include <WebSocketsServer.h>
 #include <USB.h> // For USB functions
 #include "USBHIDKeyboard.h" // For USB Keyboard HID (native ESP32)
+#include <SPIFFS.h> // For serving web files
 
 // LCD 引脚定义 (根据 hardware.md)
 #define TFT_CS    5
@@ -61,6 +62,129 @@ CRGB leds[NUM_LEDS];
 // UART2
 #define UART2_TX_PIN 39
 #define UART2_RX_PIN 40
+
+
+// Web 服务器和 WebSocket 服务器实例
+AsyncWebServer server(80);
+WebSocketsServer webSocket = WebSocketsServer(81); // WebSocket 端口
+
+// Gemini API 配置
+const char* GEMINI_API_KEY = "YOUR_GEMINI_API_KEY"; // 替换为你的 Gemini API Key
+const char* GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=";
+
+// 发送文本到 Gemini 并获取响应的函数骨架
+String sendToGemini(String prompt) {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi not connected for Gemini API.");
+    return "";
+  }
+
+  HTTPClient http;
+  String url = String(GEMINI_API_URL) + GEMINI_API_KEY;
+  http.begin(url);
+  http.addHeader("Content-Type", "application/json");
+
+  String requestBody = "{\"contents\": [{\"parts\": [{\"text\": \"" + prompt + "\"}]}]}";
+  Serial.print("Sending to Gemini: ");
+  Serial.println(requestBody);
+
+  int httpResponseCode = http.POST(requestBody);
+
+  String response = "";
+  if (httpResponseCode > 0) {
+    Serial.printf("[HTTP] POST... code: %d\n", httpResponseCode);
+    response = http.getString();
+    Serial.println(response);
+
+    // 简单的 JSON 解析示例 (实际需要更健壮的解析)
+    StaticJsonDocument<1024> doc;
+    DeserializationError error = deserializeJson(doc, response);
+
+    if (error) {
+      Serial.print(F("deserializeJson() failed: "));
+      Serial.println(error.f_str());
+      return "Error parsing Gemini response.";
+    }
+
+    // 假设响应结构为 { "candidates": [ { "content": { "parts": [ { "text": "..." } ] } } ] }
+    if (doc.containsKey("candidates") && doc["candidates"][0].containsKey("content") && doc["candidates"][0]["content"].containsKey("parts")) {
+      return doc["candidates"][0]["content"]["parts"][0]["text"].as<String>();
+    } else {
+      return "No text content found in Gemini response.";
+    }
+
+  } else {
+    Serial.printf("[HTTP] POST... failed, error: %s\n", http.errorToString(httpResponseCode).c_str());
+    response = "HTTP Error: " + String(httpResponseCode);
+  }
+
+  http.end();
+  return response;
+}
+
+void onWebSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
+  switch (type) {
+    case WStype_DISCONNECTED:
+      Serial.printf("[%u] Disconnected!\n", num);
+      break;
+    case WStype_CONNECTED: {
+      IPAddress ip = webSocket.remoteIP(num);
+      Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
+      // 发送欢迎消息
+      webSocket.sendTXT(num, "Hello from ESP32-S3!");
+    }
+      break;
+    case WStype_TEXT:
+      Serial.printf("[%u] get Text: %s\n", num, payload);
+      // 在这里处理接收到的文本指令
+      // 例如：如果收到 "chat: Hello", 则提取 "Hello" 并发送给 Gemini
+      if (String((char*)payload).startsWith("chat:")) {
+        String prompt = String((char*)payload).substring(5);
+        Serial.print("Chat command received: ");
+        Serial.println(prompt);
+        tft.fillScreen(ST77XX_BLACK);
+        tft.setCursor(0, 0);
+        tft.setTextColor(ST77XX_WHITE);
+        tft.println("User:");
+        tft.println(prompt);
+        tft.println("Thinking...");
+
+        String geminiResponse = sendToGemini(prompt);
+        Serial.print("Gemini Response: ");
+        Serial.println(geminiResponse);
+
+        tft.fillScreen(ST77XX_BLACK);
+        tft.setCursor(0, 0);
+        tft.setTextColor(ST77XX_WHITE);
+        tft.println("Gemini Says:");
+        tft.println(geminiResponse);
+
+        webSocket.sendTXT(num, "Gemini:" + geminiResponse); // 将 Gemini 响应发送回手机网页
+      } else if (String((char*)payload).startsWith("AuthConfirm:")) {
+        // Handle authorization confirmation from web page
+        bool confirmed = String((char*)payload).substring(12).equals("true");
+        if (confirmed) {
+          Serial.println("Authorization confirmed from web page.");
+          // Here you would trigger the high-risk action
+          // For now, just acknowledge.
+          webSocket.sendTXT(num, "System:Action authorized.");
+        } else {
+          Serial.println("Authorization denied from web page.");
+          webSocket.sendTXT(num, "System:Action denied.");
+        }
+      }
+      break;
+    case WStype_BIN:
+      Serial.printf("[%u] get Binary length: %u\n", num, length);
+      break;
+    case WStype_ERROR:
+    case WStype_FRAGMENT_TEXT_START:
+    case WStype_FRAGMENT_BIN_START:
+    case WStype_FRAGMENT:
+    case WStype_FRAGMENT_FIN:
+      break;
+  }
+}
 
 
 void setup() {
@@ -183,11 +307,44 @@ void setup() {
   // 所有硬件初始化完成
   Serial.println("All hardware initialized.");
 
+  // 初始化 SPIFFS
+  if (!SPIFFS.begin(true)) {
+    Serial.println("An Error has occurred while mounting SPIFFS");
+    tft.setCursor(0, 150);
+    tft.setTextColor(ST77XX_RED);
+    tft.println("SPIFFS Failed!");
+    return;
+  } else {
+    Serial.println("SPIFFS Mounted successfully");
+    tft.setCursor(0, 150);
+    tft.setTextColor(ST77XX_GREEN);
+    tft.println("SPIFFS OK!");
+  }
+
+  // 配置 Web 服务器
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(SPIFFS, "/index.html", "text/html");
+  });
+
+  server.on("/style.css", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(SPIFFS, "/style.css", "text/css");
+  });
+
+  server.on("/script.js", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(SPIFFS, "/script.js", "application/javascript");
+  });
+
+  // 启动 Web 服务器
+  server.begin();
+  Serial.println("Web Server Started.");
+
   // 初始化 USB HID (键盘)
   USB.begin(); // 确保 USB 堆栈启动
   Keyboard.begin(); // 启动键盘模拟
 
   // WiFi 连接 (示例)
+  // 注意：在实际部署中，建议使用 WiFiManager 库来管理 WiFi 配置，以便用户可以轻松配置SSID和密码。
+  // 这里为了演示，暂时硬编码。
   const char* ssid = "Your_SSID";     // 替换为你的 WiFi SSID
   const char* password = "Your_PASSWORD"; // 替换为你的 WiFi 密码
 
@@ -213,124 +370,22 @@ void setup() {
     tft.setCursor(0, 150);
     tft.setTextColor(ST77XX_GREEN);
     tft.println("WiFi Connected!");
-    tft.setCursor(0, 160); // 屏幕高度不够，这里只是为了演示
-    tft.println(WiFi.localIP());
+    // 由于屏幕高度限制，这里不再显示IP地址，但会在串口打印
+    // tft.setCursor(0, 160);
+    // tft.println(WiFi.localIP());
+    Serial.print("Access web interface at http://");
+    Serial.println(WiFi.localIP());
   } else {
     Serial.println("\nWiFi Connection Failed!");
     tft.setCursor(0, 150);
     tft.setTextColor(ST77XX_RED);
     tft.println("WiFi Failed!");
   }
-}
 
-// Gemini API 配置
-const char* GEMINI_API_KEY = "YOUR_GEMINI_API_KEY"; // 替换为你的 Gemini API Key
-const char* GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=";
-
-// 发送文本到 Gemini 并获取响应的函数骨架
-String sendToGemini(String prompt) {
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi not connected for Gemini API.");
-    return "";
-  }
-
-  HTTPClient http;
-  String url = String(GEMINI_API_URL) + GEMINI_API_KEY;
-  http.begin(url);
-  http.addHeader("Content-Type", "application/json");
-
-  String requestBody = "{\"contents\": [{\"parts\": [{\"text\": \"" + prompt + "\"}]}]}";
-  Serial.print("Sending to Gemini: ");
-  Serial.println(requestBody);
-
-  int httpResponseCode = http.POST(requestBody);
-
-  String response = "";
-  if (httpResponseCode > 0) {
-    Serial.printf("[HTTP] POST... code: %d\n", httpResponseCode);
-    response = http.getString();
-    Serial.println(response);
-
-    // 简单的 JSON 解析示例 (实际需要更健壮的解析)
-    StaticJsonDocument<1024> doc;
-    DeserializationError error = deserializeJson(doc, response);
-
-    if (error) {
-      Serial.print(F("deserializeJson() failed: "));
-      Serial.println(error.f_str());
-      return "Error parsing Gemini response.";
-    }
-
-    // 假设响应结构为 { "candidates": [ { "content": { "parts": [ { "text": "..." } ] } } ] }
-    if (doc.containsKey("candidates") && doc["candidates"][0].containsKey("content") && doc["candidates"][0]["content"].containsKey("parts")) {
-      return doc["candidates"][0]["content"]["parts"][0]["text"].as<String>();
-    } else {
-      return "No text content found in Gemini response.";
-    }
-
-  } else {
-    Serial.printf("[HTTP] POST... failed, error: %s\n", http.errorToString(httpResponseCode).c_str());
-    response = "HTTP Error: " + String(httpResponseCode);
-  }
-
-  http.end();
-  return response;
-}
-
-// Web 服务器和 WebSocket 服务器实例
-AsyncWebServer server(80);
-WebSocketsServer webSocket = WebSocketsServer(81); // WebSocket 端口
-
-void onWebSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
-  switch (type) {
-    case WStype_DISCONNECTED:
-      Serial.printf("[%u] Disconnected!\n", num);
-      break;
-    case WStype_CONNECTED: {
-      IPAddress ip = webSocket.remoteIP(num);
-      Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
-      // 发送欢迎消息
-      webSocket.sendTXT(num, "Hello from ESP32-S3!");
-    }
-      break;
-    case WStype_TEXT:
-      Serial.printf("[%u] get Text: %s\n", num, payload);
-      // 在这里处理接收到的文本指令
-      // 例如：如果收到 "chat: Hello", 则提取 "Hello" 并发送给 Gemini
-      if (String((char*)payload).startsWith("chat:")) {
-        String prompt = String((char*)payload).substring(5);
-        Serial.print("Chat command received: ");
-        Serial.println(prompt);
-        tft.fillScreen(ST77XX_BLACK);
-        tft.setCursor(0, 0);
-        tft.setTextColor(ST77XX_WHITE);
-        tft.println("User:");
-        tft.println(prompt);
-        tft.println("Thinking...");
-
-        String geminiResponse = sendToGemini(prompt);
-        Serial.print("Gemini Response: ");
-        Serial.println(geminiResponse);
-
-        tft.fillScreen(ST77XX_BLACK);
-        tft.setCursor(0, 0);
-        tft.setTextColor(ST77XX_WHITE);
-        tft.println("Gemini Says:");
-        tft.println(geminiResponse);
-
-        webSocket.sendTXT(num, "Gemini:" + geminiResponse); // 将 Gemini 响应发送回手机网页
-      }
-      break;
-    case WStype_BIN:
-      Serial.printf("[%u] get Binary length: %u\n", num, length);
-      break;
-    case WStype_ERROR:
-    case WStype_FRAGMENT_TEXT_START:
-    case WStype_FRAGMENT_BIN_START:
-    case WStype_FRAGMENT:
-    case WStype_FRAGMENT_FIN:
-      break;
-  }
+  // 启动 WebSocket 服务器
+  webSocket.begin();
+  webSocket.onEvent(onWebSocketEvent);
+  Serial.println("WebSocket Server Started.");
 }
 
 
