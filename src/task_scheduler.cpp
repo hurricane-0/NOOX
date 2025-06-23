@@ -1,6 +1,7 @@
 #include "task_scheduler.h"
 #include "hardware_config.h" // For Keyboard and tft objects
 #include "ui_manager.h"      // For OperatingMode and setOperatingMode
+#include "usb_hid_manager.h" // For USB HID functions
 
 // Task Management Variables
 std::vector<TaskAction> taskQueue;
@@ -27,40 +28,39 @@ void executeTaskAction(const TaskAction& action) {
     pendingAuthCommand = action.command; // Store command for re-execution if authorized
     Serial.print("Authorization required for: ");
     Serial.println(action.description);
-    tft.fillScreen(ST77XX_BLACK);
-    tft.setCursor(0, 0);
-    tft.setTextColor(ST77XX_RED);
-    tft.println("AUTH REQUIRED!");
-    tft.println(action.description);
+    ui_manager_clear_screen();
+    tft.setTextColor(ST77XX_RED); // Set color for warning
+    ui_manager_print_message("AUTH REQUIRED!\n" + action.description);
+    tft.setTextColor(ST77XX_WHITE); // Reset to default
     webSocket.broadcastTXT("AuthRequest:" + action.description);
     return; // Stop execution until authorized
   }
 
   if (action.type.equals("keyboard")) {
     if (action.command.equals("type")) {
-      Keyboard.print(action.value);
-      Serial.print("Typed: "); Serial.println(action.value);
+      usb_hid_send_string(action.value);
       webSocket.broadcastTXT("System:Typed '" + action.value + "'");
     } else if (action.command.equals("press_release")) {
+      std::vector<uint8_t> keycodes_to_press;
       for (const String& key : action.keys) {
-        if (key.equals("KEY_LEFT_GUI")) Keyboard.press(KEY_LEFT_GUI);
-        else if (key.equals("KEY_LEFT_ALT")) Keyboard.press(KEY_LEFT_ALT);
-        else if (key.equals("KEY_LEFT_CTRL")) Keyboard.press(KEY_LEFT_CTRL);
-        else if (key.equals("KEY_LEFT_SHIFT")) Keyboard.press(KEY_LEFT_SHIFT);
-        else if (key.equals("KEY_RETURN")) Keyboard.press(KEY_RETURN);
-        else if (key.length() == 1) Keyboard.press(key.charAt(0)); // Single character keys
+        if (key.equals("KEY_LEFT_GUI")) keycodes_to_press.push_back(KEY_LEFT_GUI);
+        else if (key.equals("KEY_LEFT_ALT")) keycodes_to_press.push_back(KEY_LEFT_ALT);
+        else if (key.equals("KEY_LEFT_CTRL")) keycodes_to_press.push_back(KEY_LEFT_CTRL);
+        else if (key.equals("KEY_LEFT_SHIFT")) keycodes_to_press.push_back(KEY_LEFT_SHIFT);
+        else if (key.equals("KEY_RETURN")) keycodes_to_press.push_back(KEY_RETURN);
+        else if (key.length() == 1) keycodes_to_press.push_back(key.charAt(0)); // Single character keys
         // For other special keys (e.g., F1-F12, PrintScreen, Esc, Tab, Delete, Backspace, CapsLock),
         // their definitions might vary across USB HID libraries.
         // If needed, these would require looking up the specific key codes for the USBHIDKeyboard library
         // or using a different HID library that provides them.
         // For now, we only support common modifiers, Enter, and single characters.
       }
-      Keyboard.releaseAll();
+      usb_hid_press_keys(keycodes_to_press);
+      usb_hid_release_all();
       String keysStr = "";
       for (const String& key : action.keys) {
         keysStr += key + " ";
       }
-      Serial.print("Pressed/Released: "); Serial.println(keysStr);
       webSocket.broadcastTXT("System:Pressed/Released keys: " + keysStr);
     }
   } else if (action.type.equals("system")) {
@@ -85,10 +85,10 @@ void processTaskQueue() {
       if (taskQueue.empty()) {
         taskInProgress = false;
         Serial.println("Task completed.");
-        tft.fillScreen(ST77XX_BLACK);
-        tft.setCursor(0, 0);
-        tft.setTextColor(ST77XX_GREEN);
-        tft.println("Task Complete!");
+        ui_manager_clear_screen();
+        tft.setTextColor(ST77XX_GREEN); // Set color for success
+        ui_manager_print_message("Task Complete!");
+        tft.setTextColor(ST77XX_WHITE); // Reset to default
         webSocket.broadcastTXT("System:Task completed.");
       } else {
         webSocket.broadcastTXT("TaskStatus:Executing action " + String(taskQueue.size()) + " of " + String(taskQueue.size() + 1) + ": " + currentAction.description);
@@ -100,10 +100,10 @@ void processTaskQueue() {
     // We need to ensure the taskInProgress flag is reset.
     taskInProgress = false;
     Serial.println("Task completed (after authorization).");
-    tft.fillScreen(ST77XX_BLACK);
-    tft.setCursor(0, 0);
-    tft.setTextColor(ST77XX_GREEN);
-    tft.println("Task Complete!");
+    ui_manager_clear_screen();
+    tft.setTextColor(ST77XX_GREEN); // Set color for success
+    ui_manager_print_message("Task Complete!");
+    tft.setTextColor(ST77XX_WHITE); // Reset to default
     webSocket.broadcastTXT("System:Task completed.");
   }
 }

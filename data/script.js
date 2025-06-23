@@ -7,6 +7,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const taskStatusDisplay = document.getElementById('taskStatusDisplay');
     const authConfirmationArea = document.getElementById('authConfirmationArea');
 
+    const wifiStatusSpan = document.getElementById('wifiStatus');
+    const ipAddressSpan = document.getElementById('ipAddress');
+    const bluetoothStatusSpan = document.getElementById('bluetoothStatus');
+
+    const scanWifiBtn = document.getElementById('scanWifiBtn');
+    const wifiScanResultsDiv = document.getElementById('wifiScanResults');
+    const scanBluetoothBtn = document.getElementById('scanBluetoothBtn');
+    const bluetoothScanResultsDiv = document.getElementById('bluetoothScanResults');
+
+    const taskHistoryList = document.getElementById('taskHistoryList');
+
     // Determine WebSocket URL based on current host
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsPort = 81; // WebSocket port defined in main.cpp
@@ -51,11 +62,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } else if (messageData.startsWith('TaskStatus:')) {
                 const statusMessage = messageData.substring(11);
-                taskStatusDisplay.textContent = `Task Status: ${statusMessage}`;
+                taskStatusDisplay.textContent = `任务状态: ${statusMessage}`;
                 appendMessage('System', statusMessage, 'system');
             } else if (messageData.startsWith('System:Task completed.')) {
-                taskStatusDisplay.textContent = 'Task Status: Completed';
-                appendMessage('System', 'Task completed.', 'system');
+                taskStatusDisplay.textContent = '任务状态: 已完成';
+                appendMessage('System', '任务已完成。', 'system');
+                addTaskToHistory('任务完成'); // Add a generic task completion to history
+            } else if (messageData.startsWith('DeviceStatus:')) {
+                const statusJson = JSON.parse(messageData.substring(13));
+                wifiStatusSpan.textContent = statusJson.wifiStatus || '未知';
+                ipAddressSpan.textContent = statusJson.ipAddress || 'N/A';
+                bluetoothStatusSpan.textContent = statusJson.bluetoothStatus || '未知';
+            } else if (messageData.startsWith('WiFiScanResults:')) {
+                const results = JSON.parse(messageData.substring(16));
+                displayWifiScanResults(results);
+            } else if (messageData.startsWith('BluetoothScanResults:')) {
+                const results = JSON.parse(messageData.substring(21));
+                displayBluetoothScanResults(results);
             }
             else {
                 appendMessage('System', messageData, 'system');
@@ -104,6 +127,59 @@ document.addEventListener('DOMContentLoaded', () => {
         authConfirmationArea.style.display = 'none';
     }
 
+    function addTaskToHistory(taskDescription) {
+        const listItem = document.createElement('li');
+        listItem.textContent = `${new Date().toLocaleTimeString()}: ${taskDescription}`;
+        taskHistoryList.prepend(listItem); // Add to the top
+    }
+
+    function displayWifiScanResults(networks) {
+        wifiScanResultsDiv.innerHTML = ''; // Clear previous results
+        if (networks.length === 0) {
+            wifiScanResultsDiv.textContent = '未找到 WiFi 网络。';
+            return;
+        }
+        const ul = document.createElement('ul');
+        networks.forEach(net => {
+            const li = document.createElement('li');
+            li.textContent = `${net.ssid} (RSSI: ${net.rssi})`;
+            const connectBtn = document.createElement('button');
+            connectBtn.textContent = '连接';
+            connectBtn.onclick = () => {
+                const password = prompt(`请输入 ${net.ssid} 的密码:`);
+                if (password !== null) { // User didn't cancel
+                    socket.send(`WiFiConnect:${net.ssid},${password}`);
+                    appendMessage('You', `尝试连接到 WiFi: ${net.ssid}`, 'user');
+                }
+            };
+            li.appendChild(connectBtn);
+            ul.appendChild(li);
+        });
+        wifiScanResultsDiv.appendChild(ul);
+    }
+
+    function displayBluetoothScanResults(devices) {
+        bluetoothScanResultsDiv.innerHTML = ''; // Clear previous results
+        if (devices.length === 0) {
+            bluetoothScanResultsDiv.textContent = '未找到蓝牙设备。';
+            return;
+        }
+        const ul = document.createElement('ul');
+        devices.forEach(dev => {
+            const li = document.createElement('li');
+            li.textContent = `${dev.name || '未知设备'} (${dev.address})`;
+            const connectBtn = document.createElement('button');
+            connectBtn.textContent = '连接';
+            connectBtn.onclick = () => {
+                socket.send(`BluetoothConnect:${dev.address}`);
+                appendMessage('You', `尝试连接到蓝牙设备: ${dev.address}`, 'user');
+            };
+            li.appendChild(connectBtn);
+            ul.appendChild(li);
+        });
+        bluetoothScanResultsDiv.appendChild(ul);
+    }
+
     sendButton.addEventListener('click', () => {
         sendMessage();
     });
@@ -149,6 +225,27 @@ document.addEventListener('DOMContentLoaded', () => {
             appendMessage('System', 'WebSocket not connected. Cannot switch mode.', 'error');
             // Revert dropdown if not connected
             modeSelect.value = currentMode === CHAT_MODE ? 'chat' : 'advanced';
+        }
+    });
+
+    // Event listeners for new buttons
+    scanWifiBtn.addEventListener('click', () => {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send('ScanWiFi');
+            appendMessage('You', '请求扫描 WiFi 网络...', 'user');
+            wifiScanResultsDiv.textContent = '正在扫描...';
+        } else {
+            appendMessage('System', 'WebSocket 未连接。无法扫描 WiFi。', 'error');
+        }
+    });
+
+    scanBluetoothBtn.addEventListener('click', () => {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send('ScanBluetooth');
+            appendMessage('You', '请求扫描蓝牙设备...', 'user');
+            bluetoothScanResultsDiv.textContent = '正在扫描...';
+        } else {
+            appendMessage('System', 'WebSocket 未连接。无法扫描蓝牙。', 'error');
         }
     });
 

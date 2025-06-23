@@ -16,6 +16,12 @@ extern OperatingMode currentMode; // Default mode
 // Extern declaration for webSocket from main.cpp
 extern WebSocketsServer webSocket;
 
+void ui_manager_init();
+void ui_manager_clear_screen();
+void ui_manager_print_message(const String& message);
+void ui_manager_set_status(const String& status);
+void ui_manager_loop(); // For any UI-related periodic updates
+
 void setOperatingMode(OperatingMode mode);
 
 #endif // UI_MANAGER_H

@@ -12,6 +12,8 @@
 #include "ui_manager.h"      // Contains setOperatingMode()
 #include "gemini_api.h"      // Contains sendToGemini()
 #include "task_scheduler.h"  // Contains TaskAction, executeTaskAction, processTaskQueue
+#include "wifi_manager.h"    // For WiFi management functions
+#include "bluetooth_manager.h" // For Bluetooth management functions
 
 // Web Server and WebSocket Server instances
 AsyncWebServer server(80);
@@ -41,22 +43,15 @@ void onWebSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t leng
         String prompt = String((char*)payload).substring(5);
         Serial.print("Chat command received: ");
         Serial.println(prompt);
-        tft.fillScreen(ST77XX_BLACK);
-        tft.setCursor(0, 0);
-        tft.setTextColor(ST77XX_WHITE);
-        tft.println("User:");
-        tft.println(prompt);
-        tft.println("Thinking...");
+        ui_manager_clear_screen();
+        ui_manager_print_message("User:\n" + prompt + "\nThinking...");
 
         String geminiResponse = sendToGemini(prompt);
         Serial.print("Gemini Response: ");
         Serial.println(geminiResponse);
 
-        tft.fillScreen(ST77XX_BLACK);
-        tft.setCursor(0, 0);
-        tft.setTextColor(ST77XX_WHITE);
-        tft.println("Gemini Says:");
-        tft.println(geminiResponse);
+        ui_manager_clear_screen();
+        ui_manager_print_message("Gemini Says:\n" + geminiResponse);
 
         webSocket.sendTXT(num, "Gemini:" + geminiResponse); // Send Gemini response back to mobile web page
       } else if (String((char*)payload).startsWith("advanced:")) {
@@ -117,11 +112,12 @@ void onWebSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t leng
             webSocket.sendTXT(num, "System:Action authorized. Resuming task.");
             // The task processing loop will automatically resume
           } else {
-            Serial.println("Authorization denied from web page. Halting task.");
-            webSocket.sendTXT(num, "System:Action denied. Task halted.");
-            taskQueue.clear(); // Clear remaining tasks
-            taskInProgress = false;
-          }
+          Serial.println("Authorization denied from web page. Halting task.");
+          webSocket.sendTXT(num, "System:Action denied. Task halted.");
+          ui_manager_print_message("Action Denied!");
+          taskQueue.clear(); // Clear remaining tasks
+          taskInProgress = false;
+        }
         } else {
           Serial.println("Received AuthConfirm but no authorization was pending.");
           webSocket.sendTXT(num, "System:No authorization pending.");
@@ -137,6 +133,48 @@ void onWebSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t leng
         } else {
           webSocket.sendTXT(num, "System:Invalid mode specified.");
         }
+      } else if (String((char*)payload).equals("ScanWiFi")) {
+        Serial.println("Received ScanWiFi command.");
+        wifi_manager_scan_networks();
+        // Send results back to web page
+        String jsonResponse = "{\"networks\":[";
+        for (size_t i = 0; i < availableNetworks.size(); ++i) {
+          jsonResponse += "{\"ssid\":\"" + availableNetworks[i] + "\",\"rssi\":" + String(WiFi.RSSI(i)) + "}";
+          if (i < availableNetworks.size() - 1) {
+            jsonResponse += ",";
+          }
+        }
+        jsonResponse += "]}";
+        webSocket.sendTXT(num, "WiFiScanResults:" + jsonResponse);
+      } else if (String((char*)payload).startsWith("WiFiConnect:")) {
+        String connectData = String((char*)payload).substring(12);
+        int commaIndex = connectData.indexOf(',');
+        if (commaIndex != -1) {
+          String ssidToConnect = connectData.substring(0, commaIndex);
+          String passwordToConnect = connectData.substring(commaIndex + 1);
+          Serial.printf("Received WiFiConnect command for SSID: %s\n", ssidToConnect.c_str());
+          if (wifi_manager_connect_to_network(ssidToConnect, passwordToConnect)) {
+            webSocket.sendTXT(num, "System:WiFi connected to " + ssidToConnect);
+          } else {
+            webSocket.sendTXT(num, "System:WiFi connection failed for " + ssidToConnect);
+          }
+        } else {
+          webSocket.sendTXT(num, "System:Invalid WiFiConnect command format.");
+        }
+      } else if (String((char*)payload).equals("ScanBluetooth")) {
+        Serial.println("Received ScanBluetooth command.");
+        bluetooth_scan_devices();
+        // Note: Bluetooth scan results are handled asynchronously by MyAdvertisedDeviceCallbacks
+        // and stored in myAdvertisedDevice. You'd need a mechanism to send these back
+        // For now, this is a placeholder.
+        webSocket.sendTXT(num, "System:Bluetooth scan initiated. Results will appear in serial monitor.");
+        // A more robust solution would involve collecting results and sending them as JSON
+        // Similar to WiFiScanResults.
+      } else if (String((char*)payload).startsWith("BluetoothConnect:")) {
+        String deviceAddress = String((char*)payload).substring(17);
+        Serial.printf("Received BluetoothConnect command for address: %s\n", deviceAddress.c_str());
+        bluetooth_start_gatt_client(deviceAddress.c_str());
+        // Connection status will be reported via BLEClientCallbacks
       }
       break;
     case WStype_BIN:
@@ -154,19 +192,16 @@ void onWebSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t leng
 
 void setup() {
   initHardware(); // Initialize all hardware components
+  ui_manager_init(); // Initialize UI manager
 
   // Initialize SPIFFS
   if (!SPIFFS.begin(true)) {
     Serial.println("An Error has occurred while mounting SPIFFS");
-    tft.setCursor(0, 150);
-    tft.setTextColor(ST77XX_RED);
-    tft.println("SPIFFS Failed!");
+    ui_manager_set_status("SPIFFS Failed!");
     return;
   } else {
     Serial.println("SPIFFS Mounted successfully");
-    tft.setCursor(0, 150);
-    tft.setTextColor(ST77XX_GREEN);
-    tft.println("SPIFFS OK!");
+    ui_manager_set_status("SPIFFS OK!");
   }
 
   // Configure Web Server
@@ -188,9 +223,7 @@ void setup() {
 
   Serial.print("Connecting to WiFi: ");
   Serial.println(ssid);
-  tft.setCursor(0, 150);
-  tft.setTextColor(ST77XX_WHITE);
-  tft.println("Connecting WiFi...");
+  ui_manager_set_status("Connecting WiFi...");
 
   WiFi.begin(ssid, password);
 
@@ -205,16 +238,12 @@ void setup() {
     Serial.println("\nWiFi Connected!");
     Serial.print("IP Address: ");
     Serial.println(WiFi.localIP());
-    tft.setCursor(0, 150);
-    tft.setTextColor(ST77XX_GREEN);
-    tft.println("WiFi Connected!");
+    ui_manager_set_status("WiFi Connected!");
     Serial.print("Access web interface at http://");
     Serial.println(WiFi.localIP());
   } else {
     Serial.println("\nWiFi Connection Failed!");
-    tft.setCursor(0, 150);
-    tft.setTextColor(ST77XX_RED);
-    tft.println("WiFi Failed!");
+    ui_manager_set_status("WiFi Failed!");
   }
 
   // Start WebSocket Server
@@ -292,12 +321,9 @@ void processTaskQueue() {
       
       if (taskQueue.empty()) {
         taskInProgress = false;
-        Serial.println("Task completed.");
-        tft.fillScreen(ST77XX_BLACK);
-        tft.setCursor(0, 0);
-        tft.setTextColor(ST77XX_GREEN);
-        tft.println("Task Complete!");
-        webSocket.broadcastTXT("System:Task completed.");
+    Serial.println("Task completed.");
+    ui_manager_print_message("Task Complete!");
+    webSocket.broadcastTXT("System:Task completed.");
       } else {
         webSocket.broadcastTXT("TaskStatus:Executing action " + String(taskQueue.size()) + " of " + String(taskQueue.size() + 1) + ": " + currentAction.description);
       }
@@ -323,12 +349,23 @@ void loop() {
   // Process advanced mode tasks
   processTaskQueue();
 
-  // Keep WiFi connected
+  // Keep WiFi connected and send status to web UI
+  static unsigned long lastStatusUpdateTime = 0;
+  const unsigned long STATUS_UPDATE_INTERVAL_MS = 5000; // Update every 5 seconds
+
+  if (millis() - lastStatusUpdateTime > STATUS_UPDATE_INTERVAL_MS) {
+    String wifiStatus = (WiFi.status() == WL_CONNECTED) ? "已连接" : "未连接";
+    String ipAddress = (WiFi.status() == WL_CONNECTED) ? WiFi.localIP().toString() : "N/A";
+    String bluetoothStatus = BLEDevice::getInitialized() ? (deviceConnected ? "已连接" : "未连接") : "未初始化"; // Assuming deviceConnected is from bluetooth_manager
+
+    String statusJson = "{\"wifiStatus\":\"" + wifiStatus + "\",\"ipAddress\":\"" + ipAddress + "\",\"bluetoothStatus\":\"" + bluetoothStatus + "\"}";
+    webSocket.broadcastTXT("DeviceStatus:" + statusJson);
+    lastStatusUpdateTime = millis();
+  }
+
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("WiFi disconnected. Reconnecting...");
-    tft.setCursor(0, 150);
-    tft.setTextColor(ST77XX_RED);
-    tft.println("WiFi Disconnected!");
+    ui_manager_set_status("WiFi Disconnected!");
     WiFi.reconnect();
   }
 
@@ -357,11 +394,8 @@ void loop() {
   // More complex UI update logic will be needed for actual application
   if (digitalRead(KEY1_PIN) == HIGH) {
     Serial.println("KEY1 Pressed!");
-    tft.setCursor(0, 40);
-    tft.setTextColor(ST77XX_YELLOW);
-    tft.println("KEY1 Pressed!");
+    ui_manager_print_message("KEY1 Pressed!");
     delay(100); // Simple debounce
-    tft.fillRect(0, 40, TFT_WIDTH, 16, ST77XX_BLACK); // Clear display (textsize 2 * 8 pixels)
     // Example: Simulate keyboard press (for testing)
     if (currentMode == ADVANCED_MODE) {
       // In advanced mode, KEY1 could trigger a predefined task or a specific action
@@ -376,11 +410,8 @@ void loop() {
   }
   if (digitalRead(KEY2_PIN) == HIGH) {
     Serial.println("KEY2 Pressed!");
-    tft.setCursor(0, 60);
-    tft.setTextColor(ST77XX_CYAN);
-    tft.println("KEY2 Pressed!");
+    ui_manager_print_message("KEY2 Pressed!");
     delay(100);
-    tft.fillRect(0, 60, TFT_WIDTH, 16, ST77XX_BLACK); // Clear display (textsize 2 * 8 pixels)
     // Example: Switch mode with KEY2
     if (currentMode == CHAT_MODE) {
       setOperatingMode(ADVANCED_MODE);
@@ -390,16 +421,14 @@ void loop() {
   }
   if (digitalRead(KEY3_PIN) == HIGH) {
     Serial.println("KEY3 Pressed!");
-    tft.setCursor(0, 80);
-    tft.setTextColor(ST77XX_MAGENTA);
-    tft.println("KEY3 Pressed!");
+    ui_manager_print_message("KEY3 Pressed!");
     delay(100);
-    tft.fillRect(0, 80, TFT_WIDTH, 16, ST77XX_BLACK); // Clear display (textsize 2 * 8 pixels)
     // Example: Trigger authorization denial for testing
     if (authorizationPending) {
       authorizationPending = false;
       Serial.println("Authorization denied by KEY3.");
       webSocket.broadcastTXT("System:Action denied by device button.");
+      ui_manager_print_message("Action Denied by Button!");
       taskQueue.clear(); // Halt task
       taskInProgress = false;
     }

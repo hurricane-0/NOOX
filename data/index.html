@@ -27,6 +27,33 @@
                 <!-- Authorization confirmation will be displayed here -->
             </div>
         </div>
+
+        <div class="device-status-section">
+            <h2>设备状态</h2>
+            <p>WiFi 状态: <span id="wifiStatus">未知</span></p>
+            <p>IP 地址: <span id="ipAddress">N/A</span></p>
+            <p>蓝牙状态: <span id="bluetoothStatus">未知</span></p>
+        </div>
+
+        <div class="network-management-section">
+            <h2>网络管理</h2>
+            <button id="scanWifiBtn">扫描 WiFi</button>
+            <div id="wifiScanResults">
+                <!-- WiFi scan results will be displayed here -->
+            </div>
+            <button id="scanBluetoothBtn">扫描蓝牙</button>
+            <div id="bluetoothScanResults">
+                <!-- Bluetooth scan results will be displayed here -->
+            </div>
+        </div>
+
+        <div class="task-history-section">
+            <h2>任务历史</h2>
+            <ul id="taskHistoryList">
+                <!-- Task history will be appended here -->
+            </ul>
+        </div>
+
         <div class="chat-input">
             <input type="text" id="messageInput" placeholder="输入消息...">
             <button id="sendButton">发送</button>
