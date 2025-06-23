@@ -2,6 +2,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const chatMessages = document.getElementById('chatMessages');
     const messageInput = document.getElementById('messageInput');
     const sendButton = document.getElementById('sendButton');
+    const modeSelect = document.getElementById('modeSelect');
+    const advancedControls = document.getElementById('advancedControls');
+    const taskStatusDisplay = document.getElementById('taskStatusDisplay');
+    const authConfirmationArea = document.getElementById('authConfirmationArea');
 
     // Determine WebSocket URL based on current host
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -33,17 +37,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.warn('High-risk operation requires authorization!');
                 // You might add a button here for user to click to send 'AuthConfirm'
                 appendMessage('System', 'Click "Confirm" button on device or here to authorize.', 'system');
-                // Example: Add a button dynamically for confirmation
-                const confirmBtn = document.createElement('button');
-                confirmBtn.textContent = 'Confirm Action';
-                confirmBtn.onclick = () => {
-                    socket.send('AuthConfirm:true');
-                    confirmBtn.remove(); // Remove button after click
-                };
-                chatMessages.appendChild(confirmBtn);
-                chatMessages.scrollTop = chatMessages.scrollHeight; // Scroll to bottom
+                displayAuthConfirmation(authMessage);
             } else if (messageData.startsWith('AuthDenied:')) {
                 appendMessage('System', 'Action Denied by User.', 'system');
+                clearAuthConfirmation();
+            } else if (messageData.startsWith('System:Switched to')) {
+                appendMessage('System', messageData.substring(7), 'system');
+                // Update mode select dropdown based on device's actual mode
+                if (messageData.includes("Chat Mode")) {
+                    modeSelect.value = 'chat';
+                } else if (messageData.includes("Advanced Mode")) {
+                    modeSelect.value = 'advanced';
+                }
+            } else if (messageData.startsWith('TaskStatus:')) {
+                const statusMessage = messageData.substring(11);
+                taskStatusDisplay.textContent = `Task Status: ${statusMessage}`;
+                appendMessage('System', statusMessage, 'system');
+            } else if (messageData.startsWith('System:Task completed.')) {
+                taskStatusDisplay.textContent = 'Task Status: Completed';
+                appendMessage('System', 'Task completed.', 'system');
             }
             else {
                 appendMessage('System', messageData, 'system');
@@ -70,6 +82,28 @@ document.addEventListener('DOMContentLoaded', () => {
         chatMessages.scrollTop = chatMessages.scrollHeight; // Scroll to the bottom
     }
 
+    function displayAuthConfirmation(message) {
+        authConfirmationArea.innerHTML = `
+            <p><strong>Authorization Required:</strong> ${message}</p>
+            <button id="confirmAuthBtn">Confirm</button>
+            <button id="denyAuthBtn">Deny</button>
+        `;
+        document.getElementById('confirmAuthBtn').onclick = () => {
+            socket.send('AuthConfirm:true');
+            clearAuthConfirmation();
+        };
+        document.getElementById('denyAuthBtn').onclick = () => {
+            socket.send('AuthConfirm:false');
+            clearAuthConfirmation();
+        };
+        authConfirmationArea.style.display = 'block';
+    }
+
+    function clearAuthConfirmation() {
+        authConfirmationArea.innerHTML = '';
+        authConfirmationArea.style.display = 'none';
+    }
+
     sendButton.addEventListener('click', () => {
         sendMessage();
     });
@@ -85,13 +119,38 @@ document.addEventListener('DOMContentLoaded', () => {
         if (message) {
             appendMessage('You', message, 'user');
             if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.send(`chat:${message}`); // Prefix with 'chat:' for ESP32 parsing
+                if (modeSelect.value === 'chat') {
+                    socket.send(`chat:${message}`); // Prefix with 'chat:' for ESP32 parsing
+                } else if (modeSelect.value === 'advanced') {
+                    // In advanced mode, assume user input is a task for Gemini
+                    // We'll need to instruct the user to provide JSON or have Gemini generate it
+                    appendMessage('System', 'In Advanced Mode, please provide a structured task for Gemini (e.g., JSON).', 'info');
+                    // For now, we'll just send it as a generic advanced command
+                    socket.send(`advanced:${message}`);
+                }
             } else {
                 appendMessage('System', 'WebSocket not connected. Message not sent.', 'error');
             }
             messageInput.value = ''; // Clear input
         }
     }
+
+    modeSelect.addEventListener('change', () => {
+        const selectedMode = modeSelect.value;
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(`SetMode:${selectedMode}`);
+            if (selectedMode === 'advanced') {
+                advancedControls.style.display = 'block';
+            } else {
+                advancedControls.style.display = 'none';
+                taskStatusDisplay.textContent = 'Task Status: N/A';
+            }
+        } else {
+            appendMessage('System', 'WebSocket not connected. Cannot switch mode.', 'error');
+            // Revert dropdown if not connected
+            modeSelect.value = currentMode === CHAT_MODE ? 'chat' : 'advanced';
+        }
+    });
 
     // Initial WebSocket connection
     connectWebSocket();

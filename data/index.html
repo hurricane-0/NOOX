@@ -9,10 +9,23 @@
 <body>
     <div class="chat-container">
         <div class="chat-header">
-            <h1>ESP32-S3 AI Chat</h1>
+            <h1>ESP32-S3 AI Hardware</h1>
+            <div class="mode-selector">
+                <label for="modeSelect">模式:</label>
+                <select id="modeSelect">
+                    <option value="chat">聊天模式</option>
+                    <option value="advanced">高级模式</option>
+                </select>
+            </div>
         </div>
         <div class="chat-messages" id="chatMessages">
             <!-- Messages will be appended here -->
+        </div>
+        <div class="advanced-controls" id="advancedControls" style="display: none;">
+            <p id="taskStatusDisplay">任务状态: N/A</p>
+            <div id="authConfirmationArea" class="auth-area" style="display: none;">
+                <!-- Authorization confirmation will be displayed here -->
+            </div>
         </div>
         <div class="chat-input">
             <input type="text" id="messageInput" placeholder="输入消息...">

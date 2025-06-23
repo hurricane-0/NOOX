@@ -30,6 +30,33 @@ body {
     font-size: 1.2em;
     border-top-left-radius: 10px;
     border-top-right-radius: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.chat-header h1 {
+    margin: 0;
+    font-size: 1.2em;
+}
+
+.mode-selector {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.mode-selector label {
+    font-size: 0.9em;
+}
+
+.mode-selector select {
+    padding: 5px 8px;
+    border-radius: 5px;
+    border: 1px solid #ccc;
+    background-color: white;
+    color: #333;
+    font-size: 0.9em;
 }
 
 .chat-messages {
@@ -60,6 +87,80 @@ body {
     align-self: flex-start;
     margin-right: auto;
     text-align: left;
+}
+
+.message.system {
+    background-color: #f8d7da; /* Light red for system messages/errors */
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+    text-align: center;
+    margin-left: auto;
+    margin-right: auto;
+    max-width: 95%;
+}
+
+.message.error {
+    background-color: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+.message.info {
+    background-color: #d1ecf1;
+    color: #0c5460;
+    border: 1px solid #bee5eb;
+}
+
+.advanced-controls {
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+    text-align: center;
+}
+
+.advanced-controls p {
+    margin: 0 0 10px 0;
+    font-weight: bold;
+    color: #007bff;
+}
+
+.auth-area {
+    background-color: #fff3cd;
+    border: 1px solid #ffeeba;
+    border-radius: 5px;
+    padding: 10px;
+    margin-top: 10px;
+    text-align: center;
+}
+
+.auth-area p {
+    margin-top: 0;
+    font-weight: bold;
+    color: #856404;
+}
+
+.auth-area button {
+    background-color: #28a745; /* Green for confirm */
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 0.9em;
+    margin: 5px;
+    transition: background-color 0.2s ease;
+}
+
+.auth-area button:hover {
+    background-color: #218838;
+}
+
+.auth-area button#denyAuthBtn {
+    background-color: #dc3545; /* Red for deny */
+}
+
+.auth-area button#denyAuthBtn:hover {
+    background-color: #c82333;
 }
 
 .chat-input {
