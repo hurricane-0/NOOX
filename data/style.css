@@ -1,0 +1,559 @@
+:root {
+    --primary-bg-color: #1a1a2e; /* Dark background */
+    --secondary-bg-color: rgba(255, 255, 255, 0.05); /* Frosted glass background */
+    --text-color: #e0e0e0; /* Light text */
+    --accent-color: #0f3460; /* Accent for buttons/highlights */
+    --border-color: rgba(255, 255, 255, 0.1); /* Subtle borders */
+    --card-border-radius: 15px;
+    --glass-blur: 10px;
+    --gradient-start: rgb(255, 255, 255); /* Purple */
+    --gradient-end: #00000063; /* Violet */
+}
+
+body {
+    margin: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: var(--text-color);
+    background: linear-gradient(45deg, var(--gradient-start), var(--gradient-end), #377b96, #181a24);
+    background-size: 400% 400%;
+    animation: gradientAnimation 15s ease infinite;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start; /* Align items to the top */
+    padding: 20px;
+    box-sizing: border-box;
+    overflow-y: auto; /* Allow scrolling for the body */
+}
+
+@keyframes gradientAnimation {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+.glass-effect {
+    background-color: var(--secondary-bg-color);
+    backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid var(--border-color);
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+}
+
+.card {
+    border-radius: var(--card-border-radius);
+    padding: 20px;
+    margin-bottom: 20px;
+    overflow: hidden; /* Ensures content respects border-radius */
+}
+
+.container {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 960px; /* Increased max width for more horizontal space */
+    gap: 20px;
+}
+
+/* Top Bar */
+.top-bar {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    display: flex;
+    justify-content: space-between;
+    align-items: center; /* Ensure vertical alignment */
+    padding: 15px 15px; /* Reduced horizontal padding slightly */
+    border-radius: var(--card-border-radius);
+    margin-bottom: 20px;
+    box-sizing: border-box;
+    width: 100%; /* Ensure it takes full width of its parent */
+}
+
+.project-name {
+    font-size: 1.5em;
+    font-weight: bold;
+    color: #fff;
+    flex-shrink: 0; /* Prevent shrinking */
+}
+
+.mode-switch-and-settings {
+    display: flex;
+    align-items: center;
+    gap: 10px; /* Reduced gap slightly */
+    flex-shrink: 0; /* Prevent shrinking */
+    white-space: nowrap; /* Keep content on one line */
+}
+
+.mode-switch {
+    display: flex;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 20px;
+    overflow: hidden;
+}
+
+.mode-btn {
+    background: none;
+    border: none;
+    color: var(--text-color);
+    padding: 8px 15px;
+    cursor: pointer;
+    font-size: 0.9em;
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.mode-btn.active {
+    background-color: var(--accent-color);
+    color: #fff;
+}
+
+.settings-btn {
+    background: none;
+    border: 1px solid var(--border-color);
+    border-radius: 50%; /* Circular shape */
+    width: 40px; /* Fixed width for circular button */
+    height: 40px; /* Fixed height for circular button */
+    color: var(--text-color);
+    font-size: 1.2em; /* For icon-like button */
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: background-color 0.3s ease;
+    line-height: 1; /* Ensure text is vertically centered */
+}
+
+.settings-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Chat Area */
+.chat-area {
+    flex-grow: 1;
+    height: 400px; /* Fixed height for 3:2 ratio, adjust as needed */
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* Hide scrollbar for the main chat area */
+    position: relative;
+}
+
+.messages {
+    flex-grow: 1;
+    overflow-y: auto; /* Scrollable content */
+    padding-right: 10px; /* Space for scrollbar */
+}
+
+.messages::-webkit-scrollbar {
+    width: 8px;
+}
+
+.messages::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+}
+
+.messages::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+}
+
+.messages::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+/* Chat Bubbles */
+.message {
+    display: flex;
+    margin-bottom: 10px;
+    max-width: 80%;
+    padding: 10px 15px;
+    border-radius: 15px;
+    word-wrap: break-word;
+    line-height: 1.4;
+}
+
+.message.user {
+    background-color: #0f3460; /* Accent color for user messages */
+    color: #fff;
+    margin-left: auto; /* Align to right */
+    border-bottom-right-radius: 5px; /* Sharpen corner for user bubble */
+}
+
+.message.ai {
+    background-color: rgba(255, 255, 255, 0.1); /* Frosted glass for AI messages */
+    color: var(--text-color);
+    margin-right: auto; /* Align to left */
+    border-bottom-left-radius: 5px; /* Sharpen corner for AI bubble */
+}
+
+/* Input Box */
+.input-area {
+    display: flex;
+    align-items: flex-end;
+    padding: 15px;
+    border-radius: var(--card-border-radius);
+    gap: 10px;
+}
+
+.upload-btn {
+    background-color: var(--accent-color);
+    border: none;
+    border-radius: 50%;
+    width: 45px;
+    height: 45px;
+    color: #fff;
+    font-size: 1.8em;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+#message-input {
+    flex-grow: 1;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 10px 15px;
+    color: var(--text-color);
+    font-size: 1em;
+    resize: vertical; /* Allow vertical resizing */
+    min-height: 45px;
+    max-height: 150px; /* Limit max height */
+    box-sizing: border-box;
+    overflow-y: auto;
+}
+
+#message-input::placeholder {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+#message-input:focus {
+    outline: none;
+    border-color: var(--accent-color);
+}
+
+.send-btn {
+    background-color: var(--accent-color);
+    border: none;
+    border-radius: 10px;
+    padding: 10px 20px;
+    color: #fff;
+    font-size: 1em;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+/* Advanced Mode Panels */
+.advanced-mode-panels {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.function-panel,
+.automation-command-panel {
+    padding: 20px;
+}
+
+.function-panel h3,
+.automation-command-panel h3 {
+    margin-top: 0;
+    color: #fff;
+    /* margin-bottom: 15px; */ /* Removed as panel-header will handle spacing */
+}
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px; /* Space below the header */
+}
+
+.auto-toggle-btn {
+    background-color: var(--accent-color);
+    border: none;
+    border-radius: 8px;
+    color: #fff;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 0.8em;
+    transition: background-color 0.3s ease;
+}
+
+.auto-toggle-btn.active {
+    background-color: #28a745; /* Green when active */
+}
+
+.function-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.function-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    padding: 10px 15px;
+}
+
+.function-item span {
+    font-weight: bold;
+}
+
+.function-item .actions {
+    display: flex;
+    gap: 10px;
+}
+
+.function-item .auto-btn,
+.function-item .detail-btn,
+.auto-toggle-btn { /* Apply common styles to all auto buttons */
+    background-color: var(--accent-color);
+    border: none;
+    border-radius: 8px;
+    color: #fff;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 0.8em;
+    transition: background-color 0.3s ease;
+}
+
+.function-item .auto-btn.active {
+    background-color: #28a745; /* Green when active */
+}
+
+.function-item .detail-btn {
+    background-color: rgba(255, 255, 255, 0.15);
+}
+
+.command-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 10px;
+}
+
+.command-item {
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    padding: 15px;
+    text-align: center;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.command-item:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+.command-item.add-command-btn {
+    background-color: var(--accent-color);
+    color: #fff;
+    font-size: 2em;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border: 2px dashed rgba(255, 255, 255, 0.3);
+}
+
+/* Settings Sidebar */
+.settings-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 300px; /* Fixed width */
+    height: 100%;
+    background-color: var(--primary-bg-color); /* Solid background for sidebar */
+    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.3);
+    transform: translateX(-100%);
+    transition: transform 0.3s ease-in-out;
+    z-index: 2000;
+    overflow-y: auto;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+.settings-sidebar.open {
+    transform: translateX(0);
+}
+
+.sidebar-content {
+    position: relative;
+}
+
+.close-sidebar-btn {
+    position: absolute;
+    top: 0;
+    right: 0;
+    background: none;
+    border: none;
+    color: var(--text-color);
+    font-size: 1.5em;
+    cursor: pointer;
+}
+
+.settings-sidebar h2 {
+    color: #fff;
+    margin-top: 0;
+    margin-bottom: 20px;
+}
+
+.setting-section {
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.setting-section:last-child {
+    border-bottom: none;
+}
+
+.setting-section h3 {
+    color: var(--text-color);
+    margin-top: 0;
+    margin-bottom: 10px;
+}
+
+.wifi-entry {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin-bottom: 8px;
+}
+
+.wifi-entry span {
+    font-size: 0.9em;
+}
+
+.delete-wifi-btn {
+    background: none;
+    border: none;
+    color: #ff6b6b;
+    cursor: pointer;
+    font-size: 1.1em;
+}
+
+.settings-sidebar input[type="text"],
+.settings-sidebar input[type="password"],
+.settings-sidebar select {
+    width: 100%; /* Full width within its container */
+    padding: 10px;
+    margin-bottom: 10px; /* Consistent spacing */
+    background-color: rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-color);
+    font-size: 1em;
+    box-sizing: border-box; /* Include padding and border in the element's total width and height */
+}
+
+.settings-sidebar input::placeholder {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.settings-sidebar button {
+    background-color: var(--accent-color);
+    border: none;
+    border-radius: 8px;
+    color: #fff;
+    padding: 10px 15px;
+    cursor: pointer;
+    font-size: 1em;
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: 10px; /* Consistent spacing */
+}
+
+#save-settings-btn {
+    margin-top: 20px;
+    background-color: #28a745; /* Green for save */
+}
+
+/* Specific adjustments for WiFi list and input fields */
+.setting-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px; /* Space between elements in a section */
+}
+
+.setting-section h3 {
+    margin-bottom: 5px; /* Reduce space below heading */
+}
+
+.wifi-entry {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto; /* Name, Password, Delete button */
+    align-items: center;
+    gap: 10px; /* Space between columns */
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 8px 12px;
+}
+
+.wifi-entry span {
+    font-size: 0.9em;
+    white-space: nowrap; /* Prevent text from wrapping */
+    overflow: hidden;
+    text-overflow: ellipsis; /* Add ellipsis if text overflows */
+}
+
+.delete-wifi-btn {
+    width: auto; /* Override 100% width from general button style */
+    margin-top: 0; /* Override margin-top from general button style */
+    padding: 5px 10px;
+    background: none;
+    border: none;
+    color: #ff6b6b;
+    cursor: pointer;
+    font-size: 1.1em;
+    border-radius: 5px;
+}
+
+.delete-wifi-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+#add-wifi-btn {
+    margin-top: 0; /* Align with input fields */
+}
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+    .top-bar {
+        flex-direction: column; /* Stack elements vertically on mobile */
+        gap: 10px;
+        padding: 10px;
+        height: auto; /* Allow height to adjust */
+        align-items: flex-start; /* Align items to the start on mobile */
+        width: auto; /* Allow width to adjust on mobile */
+    }
+
+    .project-name {
+        width: 100%; /* Take full width on mobile */
+        text-align: center; /* Center project name on mobile */
+        margin-right: 0; /* Ensure no auto margin */
+        margin-bottom: 10px; /* Add space below project name */
+    }
+
+    .mode-switch-and-settings {
+        width: 100%;
+        justify-content: center; /* Center mode switch and settings on mobile */
+        gap: 10px;
+        white-space: normal; /* Allow wrapping on mobile */
+    }
+
+    .container {
+        padding: 10px;
+    }
+
+    .settings-sidebar {
+        width: 100%;
+    }
+}

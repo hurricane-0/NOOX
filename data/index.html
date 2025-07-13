@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AIHi</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- 1. Top Bar -->
+        <header class="top-bar glass-effect">
+            <div class="project-name">AIHi</div>
+            <div class="mode-switch-and-settings">
+                <div class="mode-switch">
+                    <button id="dialogue-mode-btn" class="mode-btn active">对话</button>
+                    <button id="advanced-mode-btn" class="mode-btn">高级</button>
+                </div>
+                <button id="settings-btn" class="settings-btn">设置</button>
+            </div>
+        </header>
+
+        <!-- 2. Chat Area -->
+        <main class="chat-area card glass-effect">
+            <div class="messages" id="messages">
+                <!-- Chat messages will be appended here by JavaScript -->
+            </div>
+        </main>
+
+        <!-- 3. Input Box -->
+        <section class="input-area glass-effect">
+            <button class="upload-btn">+</button>
+            <textarea id="message-input" placeholder="输入消息..."></textarea>
+            <button class="send-btn">发送</button>
+        </section>
+
+        <!-- 4. Advanced Mode Function Bar & Automation Command Area -->
+        <section class="advanced-mode-panels" id="advanced-mode-panels" style="display: none;">
+            <div class="function-panel card glass-effect">
+                <h3>功能模块</h3>
+                <div class="function-list">
+                    <!-- Function modules will be dynamically added here -->
+                    <div class="function-item">
+                        <span>WiFi</span>
+                        <div class="actions">
+                            <button class="auto-btn">AUTO</button>
+                            <button class="detail-btn">></button>
+                        </div>
+                    </div>
+                    <div class="function-item">
+                        <span>USB HID</span>
+                        <div class="actions">
+                            <button class="auto-btn">AUTO</button>
+                            <button class="detail-btn">></button>
+                        </div>
+                    </div>
+                    <div class="function-item">
+                        <span>蓝牙通信</span>
+                        <div class="actions">
+                            <button class="auto-btn">AUTO</button>
+                            <button class="detail-btn">></button>
+                        </div>
+                    </div>
+                    <div class="function-item">
+                        <span>Timer</span>
+                        <div class="actions">
+                            <button class="auto-btn">AUTO</button>
+                            <button class="detail-btn">></button>
+                        </div>
+                    </div>
+                    <div class="function-item">
+                        <span>GPIO</span>
+                        <div class="actions">
+                            <button class="auto-btn">AUTO</button>
+                            <button class="detail-btn">></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="automation-command-panel card glass-effect">
+                <div class="panel-header">
+                    <h3>自动化指令</h3>
+                    <button class="auto-toggle-btn">AUTO</button>
+                </div>
+                <div class="command-grid">
+                    <!-- Automation commands will be dynamically added here -->
+                    <div class="command-item">指令 1</div>
+                    <div class="command-item">指令 2</div>
+                    <div class="command-item add-command-btn">+</div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Settings Sidebar (initially hidden) -->
+    <aside class="settings-sidebar" id="settings-sidebar">
+        <div class="sidebar-content">
+            <h2>设置</h2>
+            <button class="close-sidebar-btn">X</button>
+
+            <div class="setting-section">
+                <h3>WiFi 列表</h3>
+                <div id="wifi-list">
+                    <!-- WiFi entries will be dynamically added here -->
+                    <div class="wifi-entry">
+                        <span>名称: MyHomeWiFi</span>
+                        <span>密码: ********</span>
+                        <button class="delete-wifi-btn">🗑️</button>
+                    </div>
+                </div>
+                <input type="text" id="new-wifi-name" placeholder="输入名称">
+                <input type="password" id="new-wifi-password" placeholder="输入密码">
+                <button id="add-wifi-btn">添加</button>
+            </div>
+
+            <div class="setting-section">
+                <h3>选择 LLM</h3>
+                <select id="llm-select">
+                    <option value="deepseek">DeepSeek</option>
+                    <option value="gemini">Gemini</option>
+                    <option value="chatgpt">ChatGPT</option>
+                </select>
+            </div>
+
+
+            <button id="save-settings-btn">保存设置</button>
+        </div>
+    </aside>
+
+    <script src="script.js"></script>
+</body>
+</html>
