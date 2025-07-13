@@ -1,131 +1,243 @@
 #include "wifi_manager.h"
-#include "ui_manager.h" // For displaying status on LCD
 #include <WiFi.h>
-#include <HTTPClient.h>
-#include <ArduinoJson.h> // For parsing JSON responses if needed
+#include <ArduinoJson.h> // Include ArduinoJson for config handling
+#include <vector> // For std::vector
 
-// WiFi network list
-std::vector<String> availableNetworks;
+// For Wi-Fi Killer Mode
+#include "esp_wifi.h"
+#include "esp_wifi_types.h"
+#include "esp_system.h"
+#include "esp_event.h" // For event loop
 
-void wifi_manager_init() {
-  Serial.println("Initializing WiFi Manager...");
-  ui_manager_set_status("Initializing WiFi...");
-  WiFi.mode(WIFI_STA); // Set WiFi to station mode
-  Serial.println("WiFi Manager Initialized.");
-  ui_manager_set_status("WiFi Manager OK.");
-}
+// Global pointer for static promiscuous mode callback
+static AppWiFiManager* s_instance = nullptr;
 
-void wifi_manager_scan_networks() {
-  Serial.println("Starting WiFi scan...");
-  ui_manager_set_status("Scanning WiFi...");
-  availableNetworks.clear();
-  int n = WiFi.scanNetworks();
-  Serial.println("WiFi scan finished.");
-  if (n == 0) {
-    Serial.println("No networks found.");
-    ui_manager_set_status("No WiFi Networks.");
-  } else {
-    Serial.printf("%d networks found:\n", n);
-    ui_manager_set_status(String(n) + " WiFi Networks.");
-    for (int i = 0; i < n; ++i) {
-      String ssid = WiFi.SSID(i);
-      availableNetworks.push_back(ssid);
-      Serial.printf("  %d: %s (%d)\n", i + 1, ssid.c_str(), WiFi.RSSI(i));
+// Packet capture callback function
+void IRAM_ATTR wifi_packet_sniffer_cb(void* buf, wifi_promiscuous_pkt_type_t type) {
+    if (s_instance != nullptr) {
+        // Process the packet. For now, just print a message.
+        // In a full implementation, you would parse the packet to identify clients, APs, etc.
+        wifi_promiscuous_pkt_t *pkt = (wifi_promiscuous_pkt_t*)buf;
+        Serial.printf("Packet sniffed! Type: %d, RSSI: %d, Len: %d\n", type, pkt->rx_ctrl.rssi, pkt->rx_ctrl.sig_len);
+        // You can access pkt->payload for raw packet data
     }
-  }
 }
 
-bool wifi_manager_connect_to_network(const String& ssid, const String& password) {
-  Serial.printf("Connecting to WiFi: %s\n", ssid.c_str());
-  ui_manager_set_status("Connecting to " + ssid + "...");
-  WiFi.begin(ssid.c_str(), password.c_str());
+// Update the constructor to accept and store the SDManager reference
+AppWiFiManager::AppWiFiManager(LLMManager& llm, SDManager& sd) 
+    : llmManager(llm), sdManager(sd) {
+    s_instance = this; // Set the static instance
+}
 
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 40) { // Try to connect 20 seconds
-    delay(500);
-    Serial.print(".");
-    attempts++;
-  }
+void AppWiFiManager::begin() {
+    loadAndConnect(); // Call the new helper function
+}
 
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\nWiFi Connected!");
-    Serial.print("IP Address: ");
-    Serial.println(WiFi.localIP());
-    ui_manager_set_status("WiFi Connected: " + WiFi.localIP().toString());
-    return true;
-  } else {
-    Serial.println("\nWiFi Connection Failed!");
-    ui_manager_set_status("WiFi Connect Failed!");
+void AppWiFiManager::loop() {
+    // Keep alive or check status if needed
+    // For now, just ensure connection is maintained
+    if (WiFi.status() != WL_CONNECTED) {
+        // Optional: Implement a more robust reconnection strategy here
+        // For simplicity, we'll rely on loadAndConnect for initial connection
+        // and assume it's called when credentials are saved.
+    }
+}
+
+String AppWiFiManager::getIPAddress() {
+    if (WiFi.status() == WL_CONNECTED) {
+        return WiFi.localIP().toString();
+    }
+    return "N/A";
+}
+
+String AppWiFiManager::getWiFiStatus() {
+    switch (WiFi.status()) {
+        case WL_IDLE_STATUS: return "Idle";
+        case WL_NO_SSID_AVAIL: return "No SSID";
+        case WL_SCAN_COMPLETED: return "Scan Done";
+        case WL_CONNECTED: return "Connected";
+        case WL_CONNECT_FAILED: return "Failed";
+        case WL_CONNECTION_LOST: return "Lost";
+        case WL_DISCONNECTED: return "Disconnected";
+        default: return "Unknown";
+    }
+}
+
+bool AppWiFiManager::addWiFiCredential(const String& ssid, const String& password) {
+    JsonDocument doc = sdManager.loadConfig();
+    JsonObject config = doc.as<JsonObject>();
+
+    JsonArray wifiNetworks = config["wifi_networks"].to<JsonArray>(); // This creates the array if it doesn't exist
+
+    // Check if SSID already exists, if so, update it
+    bool updated = false;
+    for (JsonObject network : wifiNetworks) {
+        if (network["ssid"] == ssid) {
+            network["password"] = password;
+            updated = true;
+            break;
+        }
+    }
+
+    if (!updated) {
+        // Add new credential
+        JsonObject newNetwork = wifiNetworks.add<JsonObject>(); // Use add<JsonObject>()
+        newNetwork["ssid"] = ssid;
+        newNetwork["password"] = password;
+    }
+
+    bool success = sdManager.saveConfig(doc); // Save the entire document
+    if (success) {
+        Serial.println("WiFi credentials added/updated. Attempting to connect...");
+        loadAndConnect(); // Attempt to connect with updated credentials
+    }
+    return success;
+}
+
+bool AppWiFiManager::deleteWiFiCredential(const String& ssid) {
+    JsonDocument doc = sdManager.loadConfig();
+    JsonObject config = doc.as<JsonObject>();
+
+    JsonArray wifiNetworks = config["wifi_networks"].as<JsonArray>();
+    if (wifiNetworks.isNull()) {
+        Serial.println("No WiFi networks to delete.");
+        return false;
+    }
+
+    int indexToRemove = -1;
+    for (size_t i = 0; i < wifiNetworks.size(); ++i) {
+        if (wifiNetworks[i]["ssid"] == ssid) {
+            indexToRemove = i;
+            break;
+        }
+    }
+
+    if (indexToRemove != -1) {
+        wifiNetworks.remove(indexToRemove);
+    bool success = sdManager.saveConfig(doc);
+        if (success) {
+            Serial.println("WiFi credential deleted. Reconnecting if current network was deleted.");
+            // If the currently connected network was deleted, disconnect and try to connect to another
+            if (WiFi.SSID() == ssid) {
+                WiFi.disconnect();
+                loadAndConnect();
+            }
+        }
+        return success;
+    }
+    Serial.println("SSID not found for deletion.");
     return false;
-  }
 }
 
-void wifi_manager_disconnect() {
-  WiFi.disconnect();
-  Serial.println("WiFi Disconnected.");
-  ui_manager_set_status("WiFi Disconnected.");
-}
+std::vector<std::pair<String, String>> AppWiFiManager::getSavedCredentials() {
+    std::vector<std::pair<String, String>> credentials;
+    JsonDocument doc = sdManager.loadConfig();
+    JsonObject config = doc.as<JsonObject>();
 
-// Example HTTP GET request
-String wifi_manager_http_get(const String& url) {
-  HTTPClient http;
-  String payload = "";
-
-  Serial.printf("HTTP GET: %s\n", url.c_str());
-  ui_manager_set_status("HTTP GET...");
-
-  http.begin(url);
-  int httpCode = http.GET();
-
-  if (httpCode > 0) {
-    Serial.printf("[HTTP] GET... code: %d\n", httpCode);
-    if (httpCode == HTTP_CODE_OK) {
-      payload = http.getString();
-      Serial.println(payload);
-      ui_manager_set_status("HTTP GET OK.");
+    JsonArray wifiNetworks = config["wifi_networks"].as<JsonArray>();
+    if (!wifiNetworks.isNull()) {
+        for (JsonObject network : wifiNetworks) {
+            credentials.push_back({network["ssid"].as<String>(), network["password"].as<String>()});
+        }
     }
-  } else {
-    Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
-    ui_manager_set_status("HTTP GET Failed.");
-  }
-  http.end();
-  return payload;
+    return credentials;
 }
 
-// Example HTTP POST request
-String wifi_manager_http_post(const String& url, const String& contentType, const String& postData) {
-  HTTPClient http;
-  String payload = "";
+void AppWiFiManager::connectToWiFi() {
+    // This function is now a helper for loadAndConnect, connecting to a specific SSID/password
+    // It's kept private and called by loadAndConnect
+}
 
-  Serial.printf("HTTP POST: %s\n", url.c_str());
-  ui_manager_set_status("HTTP POST...");
-
-  http.begin(url);
-  http.addHeader("Content-Type", contentType);
-  int httpCode = http.POST(postData);
-
-  if (httpCode > 0) {
-    Serial.printf("[HTTP] POST... code: %d\n", httpCode);
-    if (httpCode == HTTP_CODE_OK) {
-      payload = http.getString();
-      Serial.println(payload);
-      ui_manager_set_status("HTTP POST OK.");
+void AppWiFiManager::loadAndConnect() {
+    JsonDocument doc = sdManager.loadConfig();
+    
+    if (doc.isNull() || !doc["wifi_networks"].is<JsonArray>()) {
+        Serial.println("WiFi config not found on SD card or no networks saved.");
+        return;
     }
-  } else {
-    Serial.printf("[HTTP] POST... failed, error: %s\n", http.errorToString(httpCode).c_str());
-    ui_manager_set_status("HTTP POST Failed.");
-  }
-  http.end();
-  return payload;
+
+    JsonArray wifiNetworks = doc["wifi_networks"].as<JsonArray>();
+    if (wifiNetworks.isNull() || wifiNetworks.size() == 0) {
+        Serial.println("No WiFi networks saved.");
+        return;
+    }
+
+    // Try to connect to each saved network
+    for (JsonObject network : wifiNetworks) {
+        String ssid = network["ssid"].as<String>();
+        String password = network["password"].as<String>();
+
+        if (ssid.length() == 0) {
+            Serial.println("Skipping network with empty SSID.");
+            continue;
+        }
+
+        Serial.print("Attempting to connect to WiFi: ");
+        Serial.println(ssid);
+
+        WiFi.begin(ssid.c_str(), password.c_str());
+        int retries = 0;
+        while (WiFi.status() != WL_CONNECTED && retries < 20) {
+            delay(500);
+            Serial.print(".");
+            retries++;
+        }
+
+        if (WiFi.status() == WL_CONNECTED) {
+            Serial.println("\nConnected to WiFi!");
+            Serial.print("IP Address: ");
+            Serial.println(WiFi.localIP());
+            return; // Connected successfully, exit
+        } else {
+            Serial.println("\nWiFi connection failed for this network.");
+            WiFi.disconnect(); // Disconnect before trying next network
+        }
+    }
+    Serial.println("Failed to connect to any saved WiFi network.");
 }
 
-// Placeholder for MQTT client (requires a separate MQTT library)
-void wifi_manager_mqtt_publish(const String& topic, const String& message) {
-  Serial.printf("MQTT Publish (TODO): Topic='%s', Message='%s'\n", topic.c_str(), message.c_str());
-  ui_manager_set_status("MQTT Publish (TODO).");
+void AppWiFiManager::startWifiKillerMode() {
+    Serial.println("Wi-Fi Killer Mode: Starting...");
+    
+    // Save current WiFi mode to restore later
+    // Note: WiFi.getMode() returns a uint8_t, cast to wifi_mode_t
+    // This might not be perfectly reliable if WiFi is not connected or in a specific state.
+    // A more robust solution might involve storing the last *intended* mode.
+    // For simplicity, we'll assume STA mode is the default to return to.
+    // currentWifiMode = WiFi.getMode(); 
+    
+    WiFi.disconnect(true); // Disconnect from any connected AP
+    delay(100); // Give it a moment to disconnect
+
+    // Set WiFi to station mode (or APSTA if needed for other functions)
+    // For promiscuous mode, WIFI_MODE_STA is usually sufficient.
+    esp_wifi_set_mode(WIFI_MODE_STA); 
+    
+    // Enable promiscuous mode
+    esp_wifi_set_promiscuous(true);
+    
+    // Register the packet sniffer callback
+    esp_wifi_set_promiscuous_rx_cb(&wifi_packet_sniffer_cb);
+
+    // Set a default channel to monitor (e.g., channel 1)
+    // In a full implementation, you'd scan channels or allow user selection.
+    esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
+
+    Serial.println("Wi-Fi Killer Mode: Promiscuous mode enabled on channel 1.");
+    Serial.println("WARNING: Wi-Fi Killer functionality (deauthentication) has ethical and legal implications.");
+    Serial.println("         Use only on networks you own or have explicit permission to test.");
 }
 
-void wifi_manager_mqtt_subscribe(const String& topic) {
-  Serial.printf("MQTT Subscribe (TODO): Topic='%s'\n", topic.c_str());
-  ui_manager_set_status("MQTT Subscribe (TODO).");
+void AppWiFiManager::stopWifiKillerMode() {
+    Serial.println("Wi-Fi Killer Mode: Stopping...");
+    
+    // Disable promiscuous mode
+    esp_wifi_set_promiscuous(false);
+    
+    // Unregister the packet sniffer callback
+    esp_wifi_set_promiscuous_rx_cb(NULL);
+
+    // Return WiFi to normal operation (e.g., reconnect to saved network)
+    Serial.println("Wi-Fi Killer Mode: Promiscuous mode disabled. Attempting to reconnect to WiFi.");
+    loadAndConnect(); // Attempt to reconnect to a saved network
 }

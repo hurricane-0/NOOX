@@ -2,59 +2,52 @@
 #define HARDWARE_CONFIG_H
 
 #include <Arduino.h>
-#include <SPI.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_ST7735.h>
-#include <FastLED.h>
-#include <Wire.h>   // For I2C
-#include <SD.h>     // For SD Card
-#include <USB.h>    // For USB functions
-#include "USBHIDKeyboard.h" // For USB Keyboard HID (native ESP32)
 
-// LCD 引脚定义 (根据 hardware.md)
-#define TFT_CS    5
-#define TFT_DC    2
-#define TFT_RST   4 // 或者直接连接到 ESP32 的 RST 引脚
-#define TFT_BL    45 // 背光控制
+// --- I2C (OLED Screen) ---
+// Using Wire (default I2C bus)
+#define OLED_SDA_PIN 4
+#define OLED_SCL_PIN 5
+#define OLED_ADDR    0x3C // Common address for 128x64 OLEDs, verify with your module
 
-// ST7735s 屏幕尺寸
-#define TFT_WIDTH  128
-#define TFT_HEIGHT 160
+// --- I2C (Reserved) ---
+// Using Wire1 (second I2C bus)
+#define I2C1_SDA_PIN 1
+#define I2C1_SCL_PIN 2
 
-// 按键引脚定义 (根据 hardware.md)
-#define KEY1_PIN  47
-#define KEY2_PIN  41
-#define KEY3_PIN  33
+// --- SPI (TF Card) ---
+#define SPI_CS_PIN   6
+#define SPI_SCK_PIN  15
+#define SPI_MISO_PIN 16
+#define SPI_MOSI_PIN 7
 
-// LED 引脚定义 (根据 hardware.md)
-#define LED1_PIN  46
-#define LED2_PIN  42
+// --- Button Inputs (Active High) ---
+// Note: Configure with internal pull-down resistors.
+#define BUTTON_1_PIN 21 // OK
+#define BUTTON_2_PIN 47 // Up
+#define BUTTON_3_PIN 38 // Down
 
-// WS2812 RGB LED 定义 (根据 hardware.md)
-#define WS2812_PIN  48
-#define NUM_LEDS    1 // 只有一个 WS2812 LED
+// --- LED Outputs (Active High) ---
+#define LED_1_PIN 41
+#define LED_2_PIN 40
+#define LED_3_PIN 39
 
-// SD 卡引脚定义 (根据 hardware.md)
-#define SD_SCK    36
-#define SD_MOSI   35
-#define SD_MISO   37
-#define SD_CS     34
+// --- Additional UART ---
+#define UART1_TX_PIN 17
+#define UART1_RX_PIN 18
 
-// I2C 引脚定义 (根据 hardware.md)
-#define I2C_SDA_PIN 7
-#define I2C_SCL_PIN 17
+// --- Reserved General Purpose GPIO ---
+#define RESERVED_GPIO_1 8
+#define RESERVED_GPIO_2 9
+#define RESERVED_GPIO_3 10
 
-// UART 引脚定义 (根据 hardware.md)
-// UART1
-#define UART1_TX_PIN 43
-#define UART1_RX_PIN 44
-// UART2
-#define UART2_TX_PIN 39
-#define UART2_RX_PIN 40
+// --- Onboard RGB LED (WS2812) ---
+#define RGB_LED_PIN 48
+#define NUM_LEDS    1
 
-// Global hardware objects
-extern Adafruit_ST7735 tft;
-extern USBHIDKeyboard Keyboard;
-extern CRGB leds[NUM_LEDS];
+// --- USB OTG Pins ---
+// These are handled by the ESP32-S3's native USB peripheral.
+// No direct pin definition is needed for standard USB HID usage.
+// #define USB_DM_PIN 19
+// #define USB_DP_PIN 20
 
 #endif // HARDWARE_CONFIG_H

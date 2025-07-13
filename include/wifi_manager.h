@@ -1,18 +1,32 @@
-#ifndef WIFI_MANAGER_H
-#define WIFI_MANAGER_H
+#ifndef APP_WIFI_MANAGER_H
+#define APP_WIFI_MANAGER_H
 
-#include <Arduino.h>
-#include <vector> // For std::vector<String>
+#include <WiFi.h>
+#include "llm_manager.h"
+#include "sd_manager.h" // Include SDManager
 
-extern std::vector<String> availableNetworks; // Declare availableNetworks as extern
+class AppWiFiManager {
+public:
+    AppWiFiManager(LLMManager& llm, SDManager& sd); // Add SDManager reference
+    void begin();
+    void loop();
+    String getIPAddress();
+    String getWiFiStatus();
+    
+    // WiFi Credential Management
+    bool addWiFiCredential(const String& ssid, const String& password);
+    bool deleteWiFiCredential(const String& ssid);
+    std::vector<std::pair<String, String>> getSavedCredentials();
 
-void wifi_manager_init();
-void wifi_manager_scan_networks();
-bool wifi_manager_connect_to_network(const String& ssid, const String& password);
-void wifi_manager_disconnect();
-String wifi_manager_http_get(const String& url);
-String wifi_manager_http_post(const String& url, const String& contentType, const String& postData);
-void wifi_manager_mqtt_publish(const String& topic, const String& message);
-void wifi_manager_mqtt_subscribe(const String& topic);
+    // Wi-Fi Killer Mode
+    void startWifiKillerMode();
+    void stopWifiKillerMode();
 
-#endif // WIFI_MANAGER_H
+private:
+    LLMManager& llmManager;
+    SDManager& sdManager; // Store reference to SDManager
+    void connectToWiFi();
+    void loadAndConnect(); // New helper to load credentials and connect
+};
+
+#endif // APP_WIFI_MANAGER_H

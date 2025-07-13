@@ -1,27 +1,51 @@
 #ifndef UI_MANAGER_H
 #define UI_MANAGER_H
 
-#include <Arduino.h>
-#include <WebSocketsServer.h> // For webSocket.broadcastTXT
-#include "hardware_config.h"  // For tft object
+#include "hardware_manager.h"
+#include "wifi_manager.h" // Include WiFiManager
+#include "sd_manager.h"   // Include SDManager
+#include "task_manager.h" // Include TaskManager
 
-// Operating Modes
-enum OperatingMode {
-  CHAT_MODE,
-  ADVANCED_MODE
+enum UIState {
+    UI_STATE_STATUS,
+    UI_STATE_MAIN_MENU,
+    UI_STATE_WIFI_KILLER,
+    UI_STATE_TIMER,
+    UI_STATE_AUTO_SCRIPT_LIST,
+    UI_STATE_SETTINGS_MENU
 };
 
-extern OperatingMode currentMode; // Default mode
+class UIManager {
+public:
+    UIManager(HardwareManager& hw, AppWiFiManager& wifi, SDManager& sd, TaskManager& task); // Add TaskManager reference
+    void begin();
+    void update();
 
-// Extern declaration for webSocket from main.cpp
-extern WebSocketsServer webSocket;
+private:
+    HardwareManager& hardware;
+    AppWiFiManager& wifi;
+    SDManager& sd;
+    TaskManager& taskManager; // Reference to TaskManager
 
-void ui_manager_init();
-void ui_manager_clear_screen();
-void ui_manager_print_message(const String& message);
-void ui_manager_set_status(const String& status);
-void ui_manager_loop(); // For any UI-related periodic updates
+    UIState currentState = UI_STATE_STATUS;
+    int selectedMenuItem = 0;
+    int scriptListScrollOffset = 0;
 
-void setOperatingMode(OperatingMode mode);
+    // State Handlers
+    void handleStateStatus();
+    void handleStateMainMenu();
+    void handleStateAutoScriptList();
+    void handleStateWifiKiller();
+    void handleStateTimer();
+    void handleStateSettingsMenu();
+
+    // Drawing Functions
+    void drawStatusScreen();
+    void drawMainMenu();
+    void drawAutoScriptList();
+    void drawWifiKillerScreen();
+    void drawTimerScreen();
+    void drawSettingsMenu();
+};
 
 #endif // UI_MANAGER_H
