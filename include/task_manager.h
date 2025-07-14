@@ -2,45 +2,45 @@
 #define TASK_MANAGER_H
 
 #include <Arduino.h>
-#include "hid_manager.h" // Include HIDManager header
-#include "hardware_manager.h" // Include HardwareManager header for GPIO tasks
-#include "sd_manager.h" // Include SDManager header for script loading
-#include <ArduinoJson.h> // Include ArduinoJson for JsonObject
+#include "hid_manager.h" // 引入 HIDManager 头文件
+#include "hardware_manager.h" // 引入 HardwareManager 头文件用于 GPIO 任务
+#include "sd_manager.h" // 引入 SDManager 头文件用于脚本加载
+#include <ArduinoJson.h> // 引入 ArduinoJson 用于 JsonObject
 
-// Forward declarations to break circular dependency
+// 前向声明，避免循环依赖
 class AppWiFiManager;
-class HardwareManager; // Forward declaration for HardwareManager
-class TimerManager; // Forward declaration for TimerManager
-class BLEManager; // Forward declaration for BLEManager
-class SDManager; // Forward declaration for SDManager
+class HardwareManager; // HardwareManager 的前向声明
+class TimerManager; // TimerManager 的前向声明
+class BLEManager; // BLEManager 的前向声明
+class SDManager; // SDManager 的前向声明
 
 class TaskManager {
 public:
-    TaskManager(HIDManager& hid, AppWiFiManager& wifi, HardwareManager& hw, TimerManager& timer, BLEManager& ble, SDManager& sd); // Modified constructor to include SDManager
-    String executeTool(const String& toolName, const JsonObject& params); // New method for LLM tool calls
-    void executeTask(const String& taskName, const String& params); // Existing method, keep for compatibility if needed
-    bool isTimerRunning(); // Add method to check timer status
-    // Add more task management functionalities here
+    TaskManager(HIDManager& hid, AppWiFiManager& wifi, HardwareManager& hw, TimerManager& timer, BLEManager& ble, SDManager& sd); // 修改后的构造函数，包含 SDManager
+    String executeTool(const String& toolName, const JsonObject& params); // 用于 LLM 工具调用的新方法
+    void executeTask(const String& taskName, const String& params); // 保留的旧方法，兼容性需要
+    bool isTimerRunning(); // 检查定时器状态的方法
+    // 可在此添加更多任务管理功能
 
 private:
-    HIDManager& hidManager;     // Reference to HIDManager
-    AppWiFiManager& wifiManager; // Reference to AppWiFiManager
-    HardwareManager& hardwareManager; // Reference to HardwareManager
-    TimerManager& timerManager; // Reference to TimerManager
-    BLEManager& bleManager; // Reference to BLEManager
-    SDManager& sdManager; // Reference to SDManager for script loading
+    HIDManager& hidManager;     // HIDManager 的引用
+    AppWiFiManager& wifiManager; // AppWiFiManager 的引用
+    HardwareManager& hardwareManager; // HardwareManager 的引用
+    TimerManager& timerManager; // TimerManager 的引用
+    BLEManager& bleManager; // BLEManager 的引用
+    SDManager& sdManager; // SDManager 的引用，用于脚本加载
 
     void handleHIDTask(const String& params);
-    void handleWiFiTask(const String& params); // Placeholder for general WiFi tasks
+    void handleWiFiTask(const String& params); // 通用 WiFi 任务的占位方法
     void handleBluetoothTask(const String& params);
     void handleTimerTask(const String& params);
     void handleGpioTask(const String& params);
-    void handleWifiKillerTask(const String& params); // Specific for Wi-Fi Killer mode
+    void handleWifiKillerTask(const String& params); // 专用于 Wi-Fi Killer 模式
 
-    // Static instance and callback for TimerManager integration
+    // 用于 TimerManager 集成的静态实例和回调
     static TaskManager* _instance;
     static void IRAM_ATTR onTimerTaskCallback();
-    void _handleTimerCallback(); // Non-static helper for the callback
+    void _handleTimerCallback(); // 非静态辅助回调方法
 };
 
 #endif // TASK_MANAGER_H

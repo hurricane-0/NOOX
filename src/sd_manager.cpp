@@ -4,10 +4,12 @@
 SDManager::SDManager() {}
 
 bool SDManager::begin() {
+    // 初始化 SD 卡
     return SD.begin(SPI_CS_PIN);
 }
 
 String SDManager::readFile(const String& path) {
+    // 读取指定路径的文件内容
     File file = SD.open(path);
     if (!file) {
         return "";
@@ -18,6 +20,7 @@ String SDManager::readFile(const String& path) {
 }
 
 bool SDManager::writeFile(const String& path, const String& content) {
+    // 写入内容到指定路径的文件
     File file = SD.open(path, FILE_WRITE);
     if (!file) {
         return false;
@@ -28,10 +31,12 @@ bool SDManager::writeFile(const String& path, const String& content) {
 }
 
 bool SDManager::deleteFile(const String& path) {
+    // 删除指定路径的文件
     return SD.remove(path);
 }
 
 std::vector<String> SDManager::listScripts() {
+    // 列出 /scripts 目录下的所有脚本文件
     std::vector<String> scripts;
     File root = SD.open("/scripts");
     if (!root) {
@@ -49,14 +54,15 @@ std::vector<String> SDManager::listScripts() {
         if (!file.isDirectory()) {
             scripts.push_back(String(file.name()));
         }
-        file.close(); // Close the current file
-        file = root.openNextFile(); // Open the next file
+        file.close(); // 关闭当前文件
+        file = root.openNextFile(); // 打开下一个文件
     }
     root.close();
     return scripts;
 }
 
 bool SDManager::saveConfig(const JsonDocument& doc) {
+    // 保存配置到 SD 卡
     File file = SD.open(CONFIG_FILE, FILE_WRITE);
     if (!file) {
         Serial.println(F("Failed to create config file"));
@@ -72,11 +78,12 @@ bool SDManager::saveConfig(const JsonDocument& doc) {
 }
 
 JsonDocument SDManager::loadConfig() {
+    // 从 SD 卡加载配置
     File file = SD.open(CONFIG_FILE);
     JsonDocument doc;
     if (!file) {
         Serial.println(F("Config file not found"));
-        return doc; // Return empty doc
+        return doc; // 返回空文档
     }
 
     DeserializationError error = deserializeJson(doc, file);

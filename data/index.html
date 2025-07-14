@@ -31,7 +31,7 @@
         <section class="input-area glass-effect">
             <button class="upload-btn">+</button>
             <textarea id="message-input" placeholder="输入消息..."></textarea>
-            <button class="send-btn">发送</button>
+            <button id="send-btn" class="send-btn">发送</button>
         </section>
 
         <!-- 4. Advanced Mode Function Bar & Automation Command Area -->
@@ -100,22 +100,14 @@
             <button class="close-sidebar-btn">X</button>
 
             <div class="setting-section">
-                <h3>WiFi 列表</h3>
-                <div id="wifi-list">
-                    <!-- WiFi entries will be dynamically added here -->
-                    <div class="wifi-entry">
-                        <span>名称: MyHomeWiFi</span>
-                        <span>密码: ********</span>
-                        <button class="delete-wifi-btn">🗑️</button>
-                    </div>
-                </div>
-                <input type="text" id="new-wifi-name" placeholder="输入名称">
-                <input type="password" id="new-wifi-password" placeholder="输入密码">
-                <button id="add-wifi-btn">添加</button>
+                <h3>网络与授权</h3>
+                <input type="text" id="wifi-ssid" placeholder="WiFi 名称 (SSID)">
+                <input type="password" id="wifi-password" placeholder="WiFi 密码">
+                <input type="password" id="api-key" placeholder="LLM API Key">
             </div>
 
             <div class="setting-section">
-                <h3>选择 LLM</h3>
+                <h3>LLM 提供商</h3>
                 <select id="llm-select">
                     <option value="deepseek">DeepSeek</option>
                     <option value="gemini">Gemini</option>

@@ -3,7 +3,7 @@
 #include <ArduinoJson.h>
 #include <WiFiClientSecure.h>
 
-// Define API endpoints
+// 定义 API 端点
 const char* GEMINI_API_HOST = "generativelanguage.googleapis.com";
 const int GEMINI_API_PORT = 443;
 const char* GEMINI_API_PATH = "/v1beta/models/gemini-pro:generateContent?key=";
@@ -16,10 +16,10 @@ const char* CHATGPT_API_HOST = "api.openai.com";
 const int CHATGPT_API_PORT = 443;
 const char* CHATGPT_API_PATH = "/v1/chat/completions";
 
-// Constructor
+// 构造函数
 LLMManager::LLMManager(SDManager& sd) : sdManager(sd), currentProvider(GEMINI) {}
 
-// Begin method to load config
+// begin 方法用于加载配置
 void LLMManager::begin() {
     JsonDocument doc = sdManager.loadConfig();
     if (!doc.isNull() && doc["llm_api_key"].is<String>()) {
@@ -37,7 +37,7 @@ void LLMManager::setProvider(LLMProvider provider) {
 void LLMManager::setApiKey(const String& key) {
     apiKey = key;
     
-    // Save the new key to the config file
+    // 保存新密钥到配置文件
     JsonDocument doc = sdManager.loadConfig();
     JsonObject config = doc.as<JsonObject>();
     config["llm_api_key"] = apiKey;
@@ -233,14 +233,14 @@ String LLMManager::generateSystemPrompt(LLMMode mode, const JsonArray& authorize
 
 String LLMManager::getToolDescriptions(const JsonArray& authorizedTools) {
     String descriptions = "";
-    // Define descriptions for known tools. This should be kept in sync with TaskManager's capabilities.
-    // For automation scripts, the 'tool_name' will be 'run_automation_script' and 'script_name' will be the actual script name.
-    // The authorizedTools array will contain strings like "usb_hid_keyboard_type", "run_automation_script:configure_cpp_env"
+    // 已知工具的描述定义。应与 TaskManager 的能力保持同步。
+    // 对于自动化脚本，'tool_name' 为 'run_automation_script'，'script_name' 为实际脚本名。
+    // authorizedTools 数组将包含如 "usb_hid_keyboard_type"、"run_automation_script:configure_cpp_env" 的字符串。
 
-    // Helper lambda to check if a tool is authorized
+    // 辅助 lambda 用于检查工具是否被授权
     auto isToolAuthorized = [&](const String& toolName) {
         if (authorizedTools.isNull() || authorizedTools.size() == 0) {
-            return true; // If no specific tools are authorized, assume all are available for description
+            return true; // 如果没有指定授权工具，则默认所有工具可用
         }
         for (JsonVariant v : authorizedTools) {
             if (v.as<String>() == toolName) {
@@ -250,8 +250,8 @@ String LLMManager::getToolDescriptions(const JsonArray& authorizedTools) {
         return false;
     };
 
-    // Example tool descriptions (these should be comprehensive and accurate for the LLM)
-    // HID Tools
+    // 示例工具描述（应全面且准确反映 LLM 能力）
+    // HID 工具
     if (isToolAuthorized("usb_hid_keyboard_type")) {
         descriptions += "- **usb_hid_keyboard_type**: Types a given string on the connected computer via USB HID. Parameters: `{\"text\": \"string_to_type\"}`\n";
     }
@@ -261,26 +261,26 @@ String LLMManager::getToolDescriptions(const JsonArray& authorizedTools) {
     if (isToolAuthorized("usb_hid_mouse_move")) {
         descriptions += "- **usb_hid_mouse_move**: Moves the mouse cursor by a specified offset. Parameters: `{\"x\": 10, \"y\": 20}`\n";
     }
-    // WiFi Killer (example, actual implementation might vary)
+    // WiFi Killer（示例，实际实现可能不同）
     if (isToolAuthorized("wifi_killer_scan")) {
         descriptions += "- **wifi_killer_scan**: Scans for nearby Wi-Fi networks. Parameters: `{}`\n";
     }
-    // Timer (example)
+    // 定时器（示例）
     if (isToolAuthorized("timer_set_countdown")) {
         descriptions += "- **timer_set_countdown**: Sets a countdown timer. Parameters: `{\"duration_ms\": 5000}`\n";
     }
-    // GPIO (example)
+    // GPIO（示例）
     if (isToolAuthorized("gpio_set_level")) {
         descriptions += "- **gpio_set_level**: Sets the digital level of a specified GPIO pin. Parameters: `{\"pin\": 1, \"level\": 1}` (0 for LOW, 1 for HIGH)\n";
     }
-    // BLE (example)
+    // BLE（示例）
     if (isToolAuthorized("ble_scan_devices")) {
         descriptions += "- **ble_scan_devices**: Scans for nearby Bluetooth Low Energy devices. Parameters: `{}`\n";
     }
 
-    // Automation Scripts
-    // The authorizedTools array will contain entries like "run_automation_script:script_name"
-    // We need to iterate through authorizedTools to find automation scripts
+    // 自动化脚本
+    // authorizedTools 数组将包含如 "run_automation_script:script_name" 的条目
+    // 需遍历 authorizedTools 查找自动化脚本
     for (JsonVariant v : authorizedTools) {
         String tool = v.as<String>();
         if (tool.startsWith("run_automation_script:")) {

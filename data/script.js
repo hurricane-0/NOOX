@@ -1,4 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // --- Element Selectors ---
     const dialogueModeBtn = document.getElementById('dialogue-mode-btn');
     const advancedModeBtn = document.getElementById('advanced-mode-btn');
     const advancedModePanels = document.getElementById('advanced-mode-panels');
@@ -8,22 +9,115 @@ document.addEventListener('DOMContentLoaded', () => {
     const messageInput = document.getElementById('message-input');
     const sendBtn = document.getElementById('send-btn');
     const messagesContainer = document.getElementById('messages');
-    const autoToggleBtns = document.querySelectorAll('.auto-btn, .auto-toggle-btn');
+    const functionItems = document.querySelectorAll('.function-item');
+    
+    // Settings Sidebar Elements
+    const wifiSsidInput = document.getElementById('wifi-ssid');
+    const wifiPasswordInput = document.getElementById('wifi-password');
+    const apiKeyInput = document.getElementById('api-key');
+    const llmSelect = document.getElementById('llm-select');
+    const saveSettingsBtn = document.getElementById('save-settings-btn');
 
-    // Mode Switching
+    let websocket;
+
+    // --- Core Functions ---
+    function appendMessage(text, sender) {
+        const messageElement = document.createElement('div');
+        messageElement.classList.add('message', sender);
+        messageElement.textContent = text;
+        messagesContainer.appendChild(messageElement);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+
+    function sendToESP32(data) {
+        if (websocket && websocket.readyState === WebSocket.OPEN) {
+            websocket.send(JSON.stringify(data));
+        } else {
+            console.warn('WebSocket not open. Cannot send data.');
+            appendMessage('无法发送消息，连接未建立。', 'system-error');
+        }
+    }
+
+    // --- WebSocket Initialization ---
+    function initWebSocket() {
+        websocket = new WebSocket(`ws://${location.host}/ws`);
+
+        websocket.onopen = () => {
+            console.log('WebSocket connected');
+            appendMessage('已连接到设备。', 'system');
+        };
+
+        websocket.onmessage = (event) => {
+            console.log('Message from ESP32:', event.data);
+            try {
+                const data = JSON.parse(event.data);
+                // The backend sends various message types, but for the chat UI,
+                // we are primarily interested in 'chat_message' or raw text.
+                if (data.type === 'chat_message' && data.sender === 'bot') {
+                    appendMessage(data.text, 'ai');
+                } else if (data.type === 'tool_execution_result') {
+                    const resultText = `Tool '${data.tool_name}' executed. Result: ${data.result}`;
+                    appendMessage(resultText, 'system');
+                } else {
+                     // Fallback for other JSON messages or plain text
+                    appendMessage(event.data, 'ai');
+                }
+            } catch (e) {
+                // If data is not JSON, display as plain text
+                appendMessage(event.data, 'ai');
+            }
+        };
+
+        websocket.onerror = (event) => {
+            console.error('WebSocket error:', event);
+            appendMessage('WebSocket 连接出错。', 'system-error');
+        };
+
+        websocket.onclose = () => {
+            console.log('WebSocket closed');
+            appendMessage('连接已断开。', 'system-error');
+        };
+    }
+
+    // --- UI Logic ---
+    function sendMessage() {
+        const messageText = messageInput.value.trim();
+        if (messageText) {
+            appendMessage(messageText, 'user');
+            sendToESP32({ type: 'chat_message', payload: messageText });
+            messageInput.value = '';
+            messageInput.style.height = 'auto';
+        }
+    }
+    
+    function updateAuthorizedTools() {
+        const authorizedTools = [];
+        functionItems.forEach(item => {
+            const autoBtn = item.querySelector('.auto-btn');
+            if (autoBtn.classList.contains('active')) {
+                const toolName = item.querySelector('span').textContent;
+                authorizedTools.push(toolName);
+            }
+        });
+        sendToESP32({ type: 'set_authorized_tools', tools: authorizedTools });
+    }
+
+    // --- Event Listeners ---
     dialogueModeBtn.addEventListener('click', () => {
         dialogueModeBtn.classList.add('active');
         advancedModeBtn.classList.remove('active');
         advancedModePanels.style.display = 'none';
+        sendToESP32({ type: 'set_llm_mode', mode: 'chat' });
     });
 
     advancedModeBtn.addEventListener('click', () => {
         advancedModeBtn.classList.add('active');
         dialogueModeBtn.classList.remove('active');
         advancedModePanels.style.display = 'flex';
+        sendToESP32({ type: 'set_llm_mode', mode: 'advanced' });
+        updateAuthorizedTools(); // Send current tool authorizations
     });
 
-    // Settings Sidebar
     settingsBtn.addEventListener('click', () => {
         settingsSidebar.classList.add('open');
     });
@@ -32,121 +126,57 @@ document.addEventListener('DOMContentLoaded', () => {
         settingsSidebar.classList.remove('open');
     });
 
-    // Close sidebar when clicking outside (optional, but good UX)
-    // document.addEventListener('click', (event) => {
-    //     if (settingsSidebar.classList.contains('open') && !settingsSidebar.contains(event.target) && !settingsBtn.contains(event.target)) {
-    //         settingsSidebar.classList.remove('open');
-    //     }
-    // });
-
-    // Input Box Auto-resize
     messageInput.addEventListener('input', () => {
         messageInput.style.height = 'auto';
-        messageInput.style.height = messageInput.scrollHeight + 'px';
+        messageInput.style.height = `${messageInput.scrollHeight}px`;
     });
 
-    // Send Message (for demonstration)
-    sendBtn.addEventListener('click', () => {
-        const message = messageInput.value.trim();
-        if (message) {
-            appendMessage(message, 'user');
-            messageInput.value = '';
-            messageInput.style.height = 'auto'; // Reset height after sending
-            // Simulate a response
-            setTimeout(() => {
-                appendMessage('这是来自AIHi的回复：' + message, 'ai');
-            }, 500);
-        }
-    });
+    sendBtn.addEventListener('click', sendMessage);
 
-    // Allow sending with Enter key
     messageInput.addEventListener('keypress', (event) => {
         if (event.key === 'Enter' && !event.shiftKey) {
-            event.preventDefault(); // Prevent new line
-            sendBtn.click();
+            event.preventDefault();
+            sendMessage();
         }
     });
 
-    function appendMessage(text, sender) {
-        const messageElement = document.createElement('div');
-        messageElement.classList.add('message', sender);
-        messageElement.textContent = text;
-        messagesContainer.appendChild(messageElement);
-        messagesContainer.scrollTop = messagesContainer.scrollHeight; // Scroll to bottom
-    }
-
-    // Placeholder for WebSocket communication
-    // const websocket = new WebSocket('ws://your-esp32-ip/ws'); // Replace with your ESP32 IP
-
-    // websocket.onopen = (event) => {
-    //     console.log('WebSocket connected:', event);
-    // };
-
-    // websocket.onmessage = (event) => {
-    //     console.log('Message from ESP32:', event.data);
-    //     // Handle incoming messages (e.g., append to chat, update settings)
-    //     appendMessage(event.data, 'ai'); // Example: treat all incoming as AI messages
-    // };
-
-    // websocket.onerror = (event) => {
-    //     console.error('WebSocket error:', event);
-    // };
-
-    // websocket.onclose = (event) => {
-    //     console.log('WebSocket closed:', event);
-    // };
-
-    // Example function to send data via WebSocket
-    // function sendToESP32(data) {
-    //     if (websocket.readyState === WebSocket.OPEN) {
-    //         websocket.send(data);
-    //     } else {
-    //         console.warn('WebSocket not open. Cannot send data.');
-    //     }
-    // }
-
-    // Toggle active state for AUTO buttons
-    autoToggleBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
-            btn.classList.toggle('active');
+    functionItems.forEach(item => {
+        const autoBtn = item.querySelector('.auto-btn');
+        autoBtn.addEventListener('click', () => {
+            autoBtn.classList.toggle('active');
+            // If in advanced mode, update authorizations immediately
+            if (advancedModeBtn.classList.contains('active')) {
+                updateAuthorizedTools();
+            }
         });
     });
 
-    // Settings functionality (basic placeholders)
-    const addWifiBtn = document.getElementById('add-wifi-btn');
-    const newWifiNameInput = document.getElementById('new-wifi-name');
-    const newWifiPasswordInput = document.getElementById('new-wifi-password');
-    const wifiListContainer = document.getElementById('wifi-list');
-    const saveSettingsBtn = document.getElementById('save-settings-btn');
-
-    addWifiBtn.addEventListener('click', () => {
-        const name = newWifiNameInput.value.trim();
-        const password = newWifiPasswordInput.value.trim();
-        if (name && password) {
-            const wifiEntry = document.createElement('div');
-            wifiEntry.classList.add('wifi-entry');
-            wifiEntry.innerHTML = `
-                <span>名称: ${name}</span>
-                <span>密码: ${'*'.repeat(password.length)}</span>
-                <button class="delete-wifi-btn">🗑️</button>
-            `;
-            wifiListContainer.appendChild(wifiEntry);
-            newWifiNameInput.value = '';
-            newWifiPasswordInput.value = '';
-
-            wifiEntry.querySelector('.delete-wifi-btn').addEventListener('click', (e) => {
-                e.target.closest('.wifi-entry').remove();
-            });
-        }
-    });
-
     saveSettingsBtn.addEventListener('click', () => {
-        alert('设置已保存 (功能待实现)');
-        // In a real application, you would send these settings to the ESP32 via WebSocket or HTTP POST
-        // Example: sendToESP32(JSON.stringify({ type: 'settings', wifi: getWifiList(), llm: getLlmSettings() }));
+        const ssid = wifiSsidInput.value.trim();
+        const pass = wifiPasswordInput.value.trim();
+        const apiKey = apiKeyInput.value.trim();
+
+        if (!ssid || !pass || !apiKey) {
+            alert('请填写所有网络和授权字段。');
+            return;
+        }
+
+        const settingsToSave = {
+            type: 'save_settings',
+            payload: {
+                ssid: ssid,
+                pass: pass,
+                apiKey: apiKey,
+                llm_provider: llmSelect.value // Assuming backend handles this
+            }
+        };
+        
+        sendToESP32(settingsToSave);
+        appendMessage('设置已发送至设备保存。', 'system');
         settingsSidebar.classList.remove('open');
     });
 
-    // Initial message for chat area
-    appendMessage('欢迎使用 AIHi！请开始您的对话。', 'ai');
+    // --- Initial Execution ---
+    appendMessage('欢迎使用 AIHi！正在尝试连接设备...', 'system');
+    initWebSocket();
 });

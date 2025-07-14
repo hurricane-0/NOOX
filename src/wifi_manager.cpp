@@ -1,45 +1,45 @@
 #include "wifi_manager.h"
 #include <WiFi.h>
-#include <ArduinoJson.h> // Include ArduinoJson for config handling
-#include <vector> // For std::vector
+#include <ArduinoJson.h> // 引入 ArduinoJson 用于配置处理
+#include <vector> // 用于 std::vector
 
-// For Wi-Fi Killer Mode
+// 用于 Wi-Fi Killer 模式
 #include "esp_wifi.h"
 #include "esp_wifi_types.h"
 #include "esp_system.h"
-#include "esp_event.h" // For event loop
+#include "esp_event.h" // 用于事件循环
 
-// Global pointer for static promiscuous mode callback
+// 静态混杂模式回调的全局指针
 static AppWiFiManager* s_instance = nullptr;
 
-// Packet capture callback function
+// 数据包捕获回调函数
 void IRAM_ATTR wifi_packet_sniffer_cb(void* buf, wifi_promiscuous_pkt_type_t type) {
     if (s_instance != nullptr) {
-        // Process the packet. For now, just print a message.
-        // In a full implementation, you would parse the packet to identify clients, APs, etc.
+        // 处理数据包。目前仅打印消息。
+        // 在完整实现中，你可以解析数据包以识别客户端、AP等。
         wifi_promiscuous_pkt_t *pkt = (wifi_promiscuous_pkt_t*)buf;
         Serial.printf("Packet sniffed! Type: %d, RSSI: %d, Len: %d\n", type, pkt->rx_ctrl.rssi, pkt->rx_ctrl.sig_len);
-        // You can access pkt->payload for raw packet data
+        // 可以访问 pkt->payload 获取原始数据包数据
     }
 }
 
-// Update the constructor to accept and store the SDManager reference
+// 更新构造函数以接受并保存 SDManager 引用
 AppWiFiManager::AppWiFiManager(LLMManager& llm, SDManager& sd) 
     : llmManager(llm), sdManager(sd) {
-    s_instance = this; // Set the static instance
+    s_instance = this; // 设置静态实例
 }
 
 void AppWiFiManager::begin() {
-    loadAndConnect(); // Call the new helper function
+    loadAndConnect(); // 调用新的辅助函数
 }
 
 void AppWiFiManager::loop() {
-    // Keep alive or check status if needed
-    // For now, just ensure connection is maintained
+    // 保持活动或检查状态（如有需要）
+    // 目前，仅确保保持连接
     if (WiFi.status() != WL_CONNECTED) {
-        // Optional: Implement a more robust reconnection strategy here
-        // For simplicity, we'll rely on loadAndConnect for initial connection
-        // and assume it's called when credentials are saved.
+        // 可选：在此实现更强健的重新连接策略
+        // 为了简单起见，我们将依赖 loadAndConnect 进行初始连接
+        // 并假设在保存凭据时会调用它。
     }
 }
 
@@ -67,9 +67,9 @@ bool AppWiFiManager::addWiFiCredential(const String& ssid, const String& passwor
     JsonDocument doc = sdManager.loadConfig();
     JsonObject config = doc.as<JsonObject>();
 
-    JsonArray wifiNetworks = config["wifi_networks"].to<JsonArray>(); // This creates the array if it doesn't exist
+    JsonArray wifiNetworks = config["wifi_networks"].to<JsonArray>(); // 这会在不存在时创建数组
 
-    // Check if SSID already exists, if so, update it
+    // 检查 SSID 是否已存在，如果存在，则更新
     bool updated = false;
     for (JsonObject network : wifiNetworks) {
         if (network["ssid"] == ssid) {
@@ -80,16 +80,16 @@ bool AppWiFiManager::addWiFiCredential(const String& ssid, const String& passwor
     }
 
     if (!updated) {
-        // Add new credential
-        JsonObject newNetwork = wifiNetworks.add<JsonObject>(); // Use add<JsonObject>()
+        // 添加新凭据
+        JsonObject newNetwork = wifiNetworks.add<JsonObject>(); // 使用 add<JsonObject>()
         newNetwork["ssid"] = ssid;
         newNetwork["password"] = password;
     }
 
-    bool success = sdManager.saveConfig(doc); // Save the entire document
+    bool success = sdManager.saveConfig(doc); // 保存整个文档
     if (success) {
         Serial.println("WiFi credentials added/updated. Attempting to connect...");
-        loadAndConnect(); // Attempt to connect with updated credentials
+        loadAndConnect(); // 尝试使用更新的凭据连接
     }
     return success;
 }
@@ -117,7 +117,7 @@ bool AppWiFiManager::deleteWiFiCredential(const String& ssid) {
     bool success = sdManager.saveConfig(doc);
         if (success) {
             Serial.println("WiFi credential deleted. Reconnecting if current network was deleted.");
-            // If the currently connected network was deleted, disconnect and try to connect to another
+            // 如果当前连接的网络被删除，则断开连接并尝试连接到其他网络
             if (WiFi.SSID() == ssid) {
                 WiFi.disconnect();
                 loadAndConnect();
@@ -129,23 +129,26 @@ bool AppWiFiManager::deleteWiFiCredential(const String& ssid) {
     return false;
 }
 
-std::vector<std::pair<String, String>> AppWiFiManager::getSavedCredentials() {
-    std::vector<std::pair<String, String>> credentials;
+std::vector<WiFiCredential> AppWiFiManager::getSavedWiFiCredentials() {
+    std::vector<WiFiCredential> credentials;
     JsonDocument doc = sdManager.loadConfig();
     JsonObject config = doc.as<JsonObject>();
 
     JsonArray wifiNetworks = config["wifi_networks"].as<JsonArray>();
     if (!wifiNetworks.isNull()) {
         for (JsonObject network : wifiNetworks) {
-            credentials.push_back({network["ssid"].as<String>(), network["password"].as<String>()});
+            WiFiCredential cred;
+            cred.ssid = network["ssid"].as<String>();
+            cred.password = network["password"].as<String>();
+            credentials.push_back(cred);
         }
     }
     return credentials;
 }
 
 void AppWiFiManager::connectToWiFi() {
-    // This function is now a helper for loadAndConnect, connecting to a specific SSID/password
-    // It's kept private and called by loadAndConnect
+    // 此函数现在是 loadAndConnect 的辅助函数，用于连接到特定的 SSID/密码
+    // 它是私有的，由 loadAndConnect 调用
 }
 
 void AppWiFiManager::loadAndConnect() {
@@ -162,7 +165,7 @@ void AppWiFiManager::loadAndConnect() {
         return;
     }
 
-    // Try to connect to each saved network
+    // 尝试连接到每个保存的网络
     for (JsonObject network : wifiNetworks) {
         String ssid = network["ssid"].as<String>();
         String password = network["password"].as<String>();
@@ -187,10 +190,10 @@ void AppWiFiManager::loadAndConnect() {
             Serial.println("\nConnected to WiFi!");
             Serial.print("IP Address: ");
             Serial.println(WiFi.localIP());
-            return; // Connected successfully, exit
+            return; // 成功连接，退出
         } else {
             Serial.println("\nWiFi connection failed for this network.");
-            WiFi.disconnect(); // Disconnect before trying next network
+            WiFi.disconnect(); // 在尝试下一个网络之前断开连接
         }
     }
     Serial.println("Failed to connect to any saved WiFi network.");
@@ -199,28 +202,28 @@ void AppWiFiManager::loadAndConnect() {
 void AppWiFiManager::startWifiKillerMode() {
     Serial.println("Wi-Fi Killer Mode: Starting...");
     
-    // Save current WiFi mode to restore later
-    // Note: WiFi.getMode() returns a uint8_t, cast to wifi_mode_t
-    // This might not be perfectly reliable if WiFi is not connected or in a specific state.
-    // A more robust solution might involve storing the last *intended* mode.
-    // For simplicity, we'll assume STA mode is the default to return to.
+    // 保存当前 WiFi 模式以便稍后恢复
+    // 注意：WiFi.getMode() 返回 uint8_t，转换为 wifi_mode_t
+    // 如果 WiFi 未连接或处于特定状态，这可能不完全可靠。
+    // 更健壮的解决方案可能涉及存储最后 *预期* 的模式。
+    // 为了简单起见，我们假设 STA 模式是要返回的默认值。
     // currentWifiMode = WiFi.getMode(); 
     
-    WiFi.disconnect(true); // Disconnect from any connected AP
-    delay(100); // Give it a moment to disconnect
+    WiFi.disconnect(true); // 从任何连接的 AP 断开
+    delay(100); // 给它一点时间断开连接
 
-    // Set WiFi to station mode (or APSTA if needed for other functions)
-    // For promiscuous mode, WIFI_MODE_STA is usually sufficient.
+    // 将 WiFi 设置为站点模式（或 APSTA，如果需要其他功能）
+    // 对于混杂模式，WIFI_MODE_STA 通常是足够的。
     esp_wifi_set_mode(WIFI_MODE_STA); 
     
-    // Enable promiscuous mode
+    // 启用混杂模式
     esp_wifi_set_promiscuous(true);
     
-    // Register the packet sniffer callback
+    // 注册数据包嗅探回调
     esp_wifi_set_promiscuous_rx_cb(&wifi_packet_sniffer_cb);
 
-    // Set a default channel to monitor (e.g., channel 1)
-    // In a full implementation, you'd scan channels or allow user selection.
+    // 设置要监视的默认频道（例如，频道 1）
+    // 在完整实现中，你会扫描频道或允许用户选择。
     esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
 
     Serial.println("Wi-Fi Killer Mode: Promiscuous mode enabled on channel 1.");
@@ -231,13 +234,13 @@ void AppWiFiManager::startWifiKillerMode() {
 void AppWiFiManager::stopWifiKillerMode() {
     Serial.println("Wi-Fi Killer Mode: Stopping...");
     
-    // Disable promiscuous mode
+    // 禁用混杂模式
     esp_wifi_set_promiscuous(false);
     
-    // Unregister the packet sniffer callback
+    // 注销数据包嗅探回调
     esp_wifi_set_promiscuous_rx_cb(NULL);
 
-    // Return WiFi to normal operation (e.g., reconnect to saved network)
+    // 将 WiFi 恢复到正常操作（例如，重新连接到保存的网络）
     Serial.println("Wi-Fi Killer Mode: Promiscuous mode disabled. Attempting to reconnect to WiFi.");
-    loadAndConnect(); // Attempt to reconnect to a saved network
+    loadAndConnect(); // 尝试重新连接到保存的网络
 }

@@ -185,6 +185,20 @@ body {
     border-bottom-left-radius: 5px; /* Sharpen corner for AI bubble */
 }
 
+.message.system, .message.system-error {
+    font-style: italic;
+    color: rgba(255, 255, 255, 0.6);
+    text-align: center;
+    width: 100%;
+    max-width: 100%;
+    background: none;
+}
+
+.message.system-error {
+    color: #ff6b6b; /* A reddish color for errors */
+    font-weight: bold;
+}
+
 /* Input Box */
 .input-area {
     display: flex;

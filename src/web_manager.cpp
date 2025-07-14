@@ -1,19 +1,19 @@
 #include "web_manager.h"
 #include "sd_manager.h"
 #include "task_manager.h"
-#include "wifi_manager.h" // Include WiFiManager header
+#include "wifi_manager.h" // 引入 WiFiManager 头文件
 #include <ArduinoJson.h>
 #include <LittleFS.h> // 使用 LittleFS
 
-// Define the size of the JsonDocument for authorizedToolsDoc
-// This needs to be large enough to hold the array of tool names.
-// Adjust as needed based on the expected number and length of tool names.
+// 定义 authorizedToolsDoc 的 JsonDocument 大小
+// 需要足够大以容纳工具名称数组
+// 根据预期工具数量和长度进行调整
 const size_t AUTHORIZED_TOOLS_DOC_SIZE = 1024; 
 
 WebManager::WebManager(LLMManager& llm, TaskManager& task, AppWiFiManager& wifi) 
     : llmManager(llm), taskManager(task), wifiManager(wifi), server(80), ws("/ws"),
-      currentLLMMode(CHAT_MODE), authorizedToolsDoc() { // Initialize without size in constructor
-    authorizedToolsArray = authorizedToolsDoc.to<JsonArray>(); // Initialize JsonArray
+      currentLLMMode(CHAT_MODE), authorizedToolsDoc() { // 构造函数中不指定大小初始化
+    authorizedToolsArray = authorizedToolsDoc.to<JsonArray>(); // 初始化 JsonArray
 }
 
 void WebManager::begin() {
@@ -44,7 +44,7 @@ void WebManager::onWebSocketEvent(AsyncWebSocket * server, AsyncWebSocketClient 
             Serial.printf("WebSocket client #%u disconnected\n", client->id());
             break;
         case WS_EVT_DATA:
-            // Pass the client object to handleWebSocketData
+            // 将 client 对象传递给 handleWebSocketData
             handleWebSocketData(client, arg, data, len);
             break;
         case WS_EVT_PONG:
@@ -53,7 +53,7 @@ void WebManager::onWebSocketEvent(AsyncWebSocket * server, AsyncWebSocketClient 
     }
 }
 
-// Modified handleWebSocketData to accept AsyncWebSocketClient*
+// 修改后的 handleWebSocketData，接受 AsyncWebSocketClient*
 void WebManager::handleWebSocketData(AsyncWebSocketClient * client, void *arg, uint8_t *data, size_t len) {
     AwsFrameInfo *info = (AwsFrameInfo*)arg;
     if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
@@ -77,11 +77,11 @@ void WebManager::handleWebSocketData(AsyncWebSocketClient * client, void *arg, u
                 currentLLMMode = ADVANCED_MODE;
                 Serial.println("LLM Mode set to ADVANCED_MODE");
             }
-            // Optionally send confirmation back to client
+            // 可选：向客户端发送确认信息
             client->text("{\"type\":\"llm_mode_set\", \"status\":\"success\", \"mode\":\"" + modeStr + "\"}");
         } else if (type == "set_authorized_tools") {
             JsonArray tools = doc["tools"].as<JsonArray>();
-            authorizedToolsArray.clear(); // Clear previous authorizations
+            authorizedToolsArray.clear(); // 清除之前的授权工具
             for (JsonVariant v : tools) {
                 authorizedToolsArray.add(v.as<String>());
             }
@@ -99,7 +99,7 @@ void WebManager::handleWebSocketData(AsyncWebSocketClient * client, void *arg, u
             } else { // ADVANCED_MODE
                 llmResponse = llmManager.generateResponse(payload, ADVANCED_MODE, authorizedToolsArray);
                 
-                // Attempt to parse LLM response for tool calls in advanced mode
+                // 在高级模式下尝试解析 LLM 响应中的工具调用
                 JsonDocument llmResponseDoc;
                 DeserializationError llmError = deserializeJson(llmResponseDoc, llmResponse);
 
@@ -112,8 +112,8 @@ void WebManager::handleWebSocketData(AsyncWebSocketClient * client, void *arg, u
 
                     if (isToolAuthorized(toolName)) {
                         Serial.printf("LLM requested tool: %s\n", toolName.c_str());
-                        // Execute tool via TaskManager
-                        String taskResult = taskManager.executeTool(toolName, toolParams); // This method needs to be implemented in TaskManager
+                        // 通过 TaskManager 执行工具
+                        String taskResult = taskManager.executeTool(toolName, toolParams); // 该方法需在 TaskManager 中实现
                         
                         JsonDocument responseDoc;
                         responseDoc["type"] = "tool_execution_result";
@@ -135,11 +135,11 @@ void WebManager::handleWebSocketData(AsyncWebSocketClient * client, void *arg, u
                         broadcast(responseStr);
                     }
                 } else {
-                    // If LLM response is not a valid tool call JSON in advanced mode, treat as chat message
+                    // 如果高级模式下 LLM 响应不是有效的工具调用 JSON，则作为聊天消息处理
                     JsonDocument responseDoc;
                     responseDoc["type"] = "chat_message";
                     responseDoc["sender"] = "bot";
-                    responseDoc["text"] = llmResponse; // Send raw LLM response as text
+                    responseDoc["text"] = llmResponse; // 发送原始 LLM 响应作为文本
                     String responseStr;
                     serializeJson(responseDoc, responseStr);
                     broadcast(responseStr);
@@ -153,7 +153,7 @@ void WebManager::handleWebSocketData(AsyncWebSocketClient * client, void *arg, u
 
             Serial.printf("Saving settings: SSID=%s, Pass=****, API Key=%s\n", ssid, apiKey);
             
-            // Save WiFi credentials using AppWiFiManager
+            // 使用 AppWiFiManager 保存 WiFi 凭据
             bool wifiSaved = wifiManager.addWiFiCredential(ssid, pass);
             if (wifiSaved) {
                 Serial.println("WiFi credentials saved successfully.");
@@ -161,11 +161,11 @@ void WebManager::handleWebSocketData(AsyncWebSocketClient * client, void *arg, u
                 Serial.println("Failed to save WiFi credentials.");
             }
 
-            // Save LLM API Key using LLMManager
-            llmManager.setApiKey(apiKey); // setApiKey now handles saving to SD
+            // 使用 LLMManager 保存 LLM API Key
+            llmManager.setApiKey(apiKey); // setApiKey 现在负责保存到 SD
 
-            // Acknowledge saving
-            if (wifiSaved) { // Assuming API key saving is always successful with setApiKey
+            // 确认保存结果
+            if (wifiSaved) { // 假设 setApiKey 总是成功
                 client->text("{\"type\":\"settings_saved\", \"status\":\"success\"}");
             } else {
                 client->text("{\"type\":\"settings_saved\", \"status\":\"failed\", \"message\":\"Failed to save WiFi credentials\"}");
@@ -187,9 +187,9 @@ void WebManager::setupRoutes() {
         request->send(LittleFS, "/script.js", "application/javascript");
     });
 
-    // Serve assets if any
+    // 提供静态资源（如有）
     server.on("/assets/.*", HTTP_GET, [](AsyncWebServerRequest *request){
-        request->send(LittleFS, request->url(), "image/svg+xml"); // Adjust content type if needed
+        request->send(LittleFS, request->url(), "image/svg+xml"); // 如有需要可调整内容类型
     });
 
     server.onNotFound([](AsyncWebServerRequest *request){
@@ -198,27 +198,27 @@ void WebManager::setupRoutes() {
 }
 
 void WebManager::handleUsbSerialWebRequests() {
-    // This function will handle web requests coming over USB serial.
-    // This is a placeholder implementation.
-    // Actual implementation would involve reading from Serial, parsing HTTP-like requests,
-    // and sending responses back over Serial, potentially serving files from LittleFS.
-    // This is a complex topic and requires a dedicated serial-to-HTTP bridge logic.
-    // For now, we'll just print a debug message.
+    // 此函数用于处理通过 USB 串口传来的 Web 请求
+    // 这是一个占位实现
+    // 实际实现需要从 Serial 读取、解析类似 HTTP 的请求，
+    // 并通过 Serial 返回响应，可能还要从 LittleFS 提供文件
+    // 这是一个复杂话题，需要专门的串口到 HTTP 桥接逻辑
+    // 目前仅打印调试信息
     // Serial.println("Handling USB Serial Web Requests...");
 }
 
 bool WebManager::isToolAuthorized(const String& toolName) {
     if (authorizedToolsArray.isNull() || authorizedToolsArray.size() == 0) {
-        return false; // No tools are authorized if the array is empty or null
+        return false; // 如果数组为空或为 null，则没有工具被授权
     }
     for (JsonVariant v : authorizedToolsArray) {
         String authorizedTool = v.as<String>();
         if (authorizedTool == toolName) {
             return true;
         }
-        // Handle automation scripts which are prefixed with "run_automation_script:"
+        // 处理以 "run_automation_script:" 为前缀的自动化脚本
         if (toolName.startsWith("run_automation_script:") && authorizedTool.startsWith("run_automation_script:")) {
-            if (toolName == authorizedTool) { // Exact match for script name
+            if (toolName == authorizedTool) { // 脚本名完全匹配
                 return true;
             }
         }
