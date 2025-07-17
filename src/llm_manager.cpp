@@ -21,7 +21,7 @@ LLMManager::LLMManager(SDManager& sd) : sdManager(sd), currentProvider(GEMINI) {
 
 // begin 方法用于加载配置
 void LLMManager::begin() {
-    JsonDocument doc = sdManager.loadConfig();
+    JsonDocument doc = sdManager.loadAPIKeys(); // Use new method
     if (!doc.isNull() && doc["llm_api_key"].is<String>()) {
         apiKey = doc["llm_api_key"].as<String>();
         Serial.println("LLM API Key loaded from SD card.");
@@ -38,11 +38,11 @@ void LLMManager::setApiKey(const String& key) {
     apiKey = key;
     
     // 保存新密钥到配置文件
-    JsonDocument doc = sdManager.loadConfig();
+    JsonDocument doc = sdManager.loadAPIKeys(); // Use new method
     JsonObject config = doc.as<JsonObject>();
     config["llm_api_key"] = apiKey;
     
-    if (sdManager.saveConfig(doc)) {
+    if (sdManager.saveAPIKeys(doc)) { // Use new method
         Serial.println("LLM API Key saved to SD card.");
     } else {
         Serial.println("Failed to save LLM API Key.");
@@ -234,8 +234,6 @@ String LLMManager::generateSystemPrompt(LLMMode mode, const JsonArray& authorize
 String LLMManager::getToolDescriptions(const JsonArray& authorizedTools) {
     String descriptions = "";
     // 已知工具的描述定义。应与 TaskManager 的能力保持同步。
-    // 对于自动化脚本，'tool_name' 为 'run_automation_script'，'script_name' 为实际脚本名。
-    // authorizedTools 数组将包含如 "usb_hid_keyboard_type"、"run_automation_script:configure_cpp_env" 的字符串。
 
     // 辅助 lambda 用于检查工具是否被授权
     auto isToolAuthorized = [&](const String& toolName) {
@@ -261,30 +259,37 @@ String LLMManager::getToolDescriptions(const JsonArray& authorizedTools) {
     if (isToolAuthorized("usb_hid_mouse_move")) {
         descriptions += "- **usb_hid_mouse_move**: Moves the mouse cursor by a specified offset. Parameters: `{\"x\": 10, \"y\": 20}`\n";
     }
-    // WiFi Killer（示例，实际实现可能不同）
-    if (isToolAuthorized("wifi_killer_scan")) {
-        descriptions += "- **wifi_killer_scan**: Scans for nearby Wi-Fi networks. Parameters: `{}`\n";
+    // WiFi Killer
+    if (isToolAuthorized("wifi_killer_start")) {
+        descriptions += "- **wifi_killer_start**: Starts the Wi-Fi Killer mode to scan for nearby networks. Parameters: `{}`\n";
     }
-    // 定时器（示例）
-    if (isToolAuthorized("timer_set_countdown")) {
-        descriptions += "- **timer_set_countdown**: Sets a countdown timer. Parameters: `{\"duration_ms\": 5000}`\n";
+    if (isToolAuthorized("wifi_killer_stop")) {
+        descriptions += "- **wifi_killer_stop**: Stops the Wi-Fi Killer mode. Parameters: `{}`\n";
     }
-    // GPIO（示例）
+    // 定时器
+    if (isToolAuthorized("timer_set")) {
+        descriptions += "- **timer_set**: Sets a countdown timer. Parameters: `{\"duration\": 5000}` (duration in milliseconds)\n";
+    }
+    if (isToolAuthorized("timer_start")) {
+        descriptions += "- **timer_start**: Starts the previously set timer. Parameters: `{}`\n";
+    }
+    if (isToolAuthorized("timer_stop")) {
+        descriptions += "- **timer_stop**: Stops the currently running timer. Parameters: `{}`\n";
+    }
+    // GPIO
     if (isToolAuthorized("gpio_set_level")) {
         descriptions += "- **gpio_set_level**: Sets the digital level of a specified GPIO pin. Parameters: `{\"pin\": 1, \"level\": 1}` (0 for LOW, 1 for HIGH)\n";
     }
-    // BLE（示例）
+    // BLE
     if (isToolAuthorized("ble_scan_devices")) {
         descriptions += "- **ble_scan_devices**: Scans for nearby Bluetooth Low Energy devices. Parameters: `{}`\n";
     }
 
     // 自动化脚本
-    // authorizedTools 数组将包含如 "run_automation_script:script_name" 的条目
-    // 需遍历 authorizedTools 查找自动化脚本
-    for (JsonVariant v : authorizedTools) {
-        String tool = v.as<String>();
-        if (tool.startsWith("run_automation_script:")) {
-            String scriptName = tool.substring(String("run_automation_script:").length());
+    std::vector<String> scriptNames = sdManager.listAutomationScriptNames();
+    for (const String& scriptName : scriptNames) {
+        // Check if this specific script is authorized
+        if (isToolAuthorized("run_automation_script:" + scriptName)) {
             descriptions += "- **run_automation_script** (Script: " + scriptName + "): Executes the custom automation script '" + scriptName + "'. Parameters: `{\"script_name\": \"" + scriptName + "\", \"args\": {}}` (args are optional, depending on script)\n";
         }
     }

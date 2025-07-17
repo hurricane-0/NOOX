@@ -1,6 +1,6 @@
 #include "timer_manager.h"
 
-// Static instance to allow the static onTimer callback to access member functions
+// 静态实例，用于让静态 onTimer 回调访问成员函数
 static TimerManager* _instance = nullptr;
 
 TimerManager::TimerManager() {
@@ -8,35 +8,38 @@ TimerManager::TimerManager() {
 }
 
 void TimerManager::begin() {
-    // No specific initialization needed here for the timer itself,
-    // as it's configured in setTimer.
+    // 定时器本身无需特殊初始化，
+    // 配置在 setTimer 中完成。
     Serial.println("TimerManager initialized.");
 }
 
 void IRAM_ATTR TimerManager::onTimer() {
+    // 定时器中断回调
     if (_instance && _instance->_callback) {
         _instance->_callback();
-        _instance->_timerRunning = false; // Stop timer after single shot
+        _instance->_timerRunning = false; // 单次触发后停止定时器
     }
 }
 
 void TimerManager::setTimer(long delayMs, TimerCallback callback) {
+    // 设置定时器延迟和回调
     _delayMs = delayMs;
     _callback = callback;
 
     if (timer) {
-        timerEnd(timer); // Stop and free existing timer if any
+        timerEnd(timer); // 停止并释放已有定时器
     }
 
-    // Configure timer 0, 80MHz clock, prescaler 80 (1us tick)
-    // 80MHz / 80 = 1MHz (1 tick = 1 microsecond)
-    timer = timerBegin(0, 80, true); // timer 0, prescaler 80, count up
-    timerAttachInterrupt(timer, &TimerManager::onTimer, true); // attach interrupt, edge triggered
-    timerAlarmWrite(timer, _delayMs * 1000, false); // set alarm in microseconds, not auto-reload
+    // 配置定时器 0，80MHz 时钟，分频 80（1us 计数）
+    // 80MHz / 80 = 1MHz（1 tick = 1 微秒）
+    timer = timerBegin(0, 80, true); // 定时器 0，分频 80，向上计数
+    timerAttachInterrupt(timer, &TimerManager::onTimer, true); // 绑定中断，边沿触发
+    timerAlarmWrite(timer, _delayMs * 1000, false); // 设置定时器报警（微秒），不自动重载
     Serial.printf("Timer set for %ld ms.\n", _delayMs);
 }
 
 void TimerManager::startTimer() {
+    // 启动定时器
     if (timer) {
         timerAlarmEnable(timer);
         _timerRunning = true;
@@ -47,6 +50,7 @@ void TimerManager::startTimer() {
 }
 
 void TimerManager::stopTimer() {
+    // 停止定时器
     if (timer) {
         timerAlarmDisable(timer);
         _timerRunning = false;
@@ -55,5 +59,6 @@ void TimerManager::stopTimer() {
 }
 
 bool TimerManager::isTimerRunning() {
+    // 查询定时器是否正在运行
     return _timerRunning;
 }

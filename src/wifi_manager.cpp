@@ -64,7 +64,7 @@ String AppWiFiManager::getWiFiStatus() {
 }
 
 bool AppWiFiManager::addWiFiCredential(const String& ssid, const String& password) {
-    JsonDocument doc = sdManager.loadConfig();
+    JsonDocument doc = sdManager.loadWiFiConfig(); // Use new method
     JsonObject config = doc.as<JsonObject>();
 
     JsonArray wifiNetworks = config["wifi_networks"].to<JsonArray>(); // 这会在不存在时创建数组
@@ -86,7 +86,7 @@ bool AppWiFiManager::addWiFiCredential(const String& ssid, const String& passwor
         newNetwork["password"] = password;
     }
 
-    bool success = sdManager.saveConfig(doc); // 保存整个文档
+    bool success = sdManager.saveWiFiConfig(doc); // Use new method
     if (success) {
         Serial.println("WiFi credentials added/updated. Attempting to connect...");
         loadAndConnect(); // 尝试使用更新的凭据连接
@@ -95,7 +95,7 @@ bool AppWiFiManager::addWiFiCredential(const String& ssid, const String& passwor
 }
 
 bool AppWiFiManager::deleteWiFiCredential(const String& ssid) {
-    JsonDocument doc = sdManager.loadConfig();
+    JsonDocument doc = sdManager.loadWiFiConfig(); // Use new method
     JsonObject config = doc.as<JsonObject>();
 
     JsonArray wifiNetworks = config["wifi_networks"].as<JsonArray>();
@@ -114,7 +114,7 @@ bool AppWiFiManager::deleteWiFiCredential(const String& ssid) {
 
     if (indexToRemove != -1) {
         wifiNetworks.remove(indexToRemove);
-    bool success = sdManager.saveConfig(doc);
+    bool success = sdManager.saveWiFiConfig(doc); // Use new method
         if (success) {
             Serial.println("WiFi credential deleted. Reconnecting if current network was deleted.");
             // 如果当前连接的网络被删除，则断开连接并尝试连接到其他网络
@@ -129,9 +129,9 @@ bool AppWiFiManager::deleteWiFiCredential(const String& ssid) {
     return false;
 }
 
-std::vector<WiFiCredential> AppWiFiManager::getSavedWiFiCredentials() {
+std::vector<WiFiCredential> AppWiFiManager::getSavedCredentials() {
     std::vector<WiFiCredential> credentials;
-    JsonDocument doc = sdManager.loadConfig();
+    JsonDocument doc = sdManager.loadWiFiConfig(); // Use new method
     JsonObject config = doc.as<JsonObject>();
 
     JsonArray wifiNetworks = config["wifi_networks"].as<JsonArray>();
@@ -152,7 +152,7 @@ void AppWiFiManager::connectToWiFi() {
 }
 
 void AppWiFiManager::loadAndConnect() {
-    JsonDocument doc = sdManager.loadConfig();
+    JsonDocument doc = sdManager.loadWiFiConfig(); // Use new method
     
     if (doc.isNull() || !doc["wifi_networks"].is<JsonArray>()) {
         Serial.println("WiFi config not found on SD card or no networks saved.");

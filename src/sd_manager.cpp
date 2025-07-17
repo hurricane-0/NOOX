@@ -35,41 +35,32 @@ bool SDManager::deleteFile(const String& path) {
     return SD.remove(path);
 }
 
-std::vector<String> SDManager::listScripts() {
-    // 列出 /scripts 目录下的所有脚本文件
-    std::vector<String> scripts;
-    File root = SD.open("/scripts");
-    if (!root) {
-        Serial.println("Scripts directory not found, creating it.");
-        SD.mkdir("/scripts");
-        root = SD.open("/scripts");
-    }
-    if (!root.isDirectory()) {
-        Serial.println("Error: /scripts is not a directory.");
-        return scripts;
+// 辅助函数：加载 JSON 文件
+static JsonDocument loadJsonFile(const String& path) {
+    File file = SD.open(path);
+    JsonDocument doc;
+    if (!file) {
+        Serial.printf("File not found: %s\n", path.c_str());
+        return doc; // 返回空文档
     }
 
-    File file = root.openNextFile();
-    while (file) {
-        if (!file.isDirectory()) {
-            scripts.push_back(String(file.name()));
-        }
-        file.close(); // 关闭当前文件
-        file = root.openNextFile(); // 打开下一个文件
+    DeserializationError error = deserializeJson(doc, file);
+    if (error) {
+        Serial.printf("deserializeJson() failed for %s: %s\n", path.c_str(), error.c_str());
     }
-    root.close();
-    return scripts;
+    file.close();
+    return doc;
 }
 
-bool SDManager::saveConfig(const JsonDocument& doc) {
-    // 保存配置到 SD 卡
-    File file = SD.open(CONFIG_FILE, FILE_WRITE);
+// 辅助函数：保存 JSON 文件
+static bool saveJsonFile(const String& path, const JsonDocument& doc) {
+    File file = SD.open(path, FILE_WRITE);
     if (!file) {
-        Serial.println(F("Failed to create config file"));
+        Serial.printf("Failed to create file: %s\n", path.c_str());
         return false;
     }
     if (serializeJson(doc, file) == 0) {
-        Serial.println(F("Failed to write to config file"));
+        Serial.printf("Failed to write to file: %s\n", path.c_str());
         file.close();
         return false;
     }
@@ -77,20 +68,102 @@ bool SDManager::saveConfig(const JsonDocument& doc) {
     return true;
 }
 
-JsonDocument SDManager::loadConfig() {
-    // 从 SD 卡加载配置
-    File file = SD.open(CONFIG_FILE);
-    JsonDocument doc;
-    if (!file) {
-        Serial.println(F("Config file not found"));
-        return doc; // 返回空文档
-    }
+// 新增具体配置方法
+JsonDocument SDManager::loadWiFiConfig() {
+    return loadJsonFile("/wifi_config.json");
+}
 
-    DeserializationError error = deserializeJson(doc, file);
-    if (error) {
-        Serial.print(F("deserializeJson() failed: "));
-        Serial.println(error.c_str());
+bool SDManager::saveWiFiConfig(const JsonDocument& doc) {
+    return saveJsonFile("/wifi_config.json", doc);
+}
+
+JsonDocument SDManager::loadAPIKeys() {
+    return loadJsonFile("/api_keys.json");
+}
+
+bool SDManager::saveAPIKeys(const JsonDocument& doc) {
+    return saveJsonFile("/api_keys.json", doc);
+}
+
+// --- Automation Scripts Management ---
+
+// Helper to get the path for an individual automation script
+static String getAutomationScriptPath(const String& scriptName) {
+    return "/automation_scripts/" + scriptName + ".json";
+}
+
+// Load the list of automation script names
+JsonDocument SDManager::loadAutomationScripts() {
+    return loadJsonFile("/automation_scripts.json");
+}
+
+// Save the list of automation script names
+bool SDManager::saveAutomationScripts(const JsonDocument& doc) {
+    return saveJsonFile("/automation_scripts.json", doc);
+}
+
+// Load a specific automation script by name
+JsonDocument SDManager::loadAutomationScript(const String& scriptName) {
+    return loadJsonFile(getAutomationScriptPath(scriptName));
+}
+
+// Save a specific automation script by name
+bool SDManager::saveAutomationScript(const String& scriptName, const JsonDocument& doc) {
+    bool success = saveJsonFile(getAutomationScriptPath(scriptName), doc);
+    if (success) {
+        // Add script name to the list if not already present
+        JsonDocument scriptNamesDoc = loadAutomationScripts();
+        if (scriptNamesDoc.isNull()) {
+            scriptNamesDoc.to<JsonArray>(); // Create an empty array if file was empty or invalid
+        }
+        JsonArray scriptsArray = scriptNamesDoc.as<JsonArray>();
+        bool found = false;
+        for (JsonVariant v : scriptsArray) {
+            if (v.is<String>() && v.as<String>() == scriptName) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            scriptsArray.add(scriptName);
+            return saveAutomationScripts(scriptNamesDoc);
+        }
     }
-    file.close();
-    return doc;
+    return success;
+}
+
+// Delete a specific automation script by name
+bool SDManager::deleteAutomationScript(const String& scriptName) {
+    String scriptPath = getAutomationScriptPath(scriptName);
+    bool success = SD.remove(scriptPath);
+    if (success) {
+        // Remove script name from the list
+        JsonDocument scriptNamesDoc = loadAutomationScripts();
+        if (!scriptNamesDoc.isNull() && scriptNamesDoc["scripts"].is<JsonArray>()) {
+            JsonArray scriptsArray = scriptNamesDoc["scripts"].as<JsonArray>();
+            for (int i = 0; i < scriptsArray.size(); ++i) {
+                if (scriptsArray[i].is<String>() && scriptsArray[i].as<String>() == scriptName) {
+                    scriptsArray.remove(i);
+                    break;
+                }
+            }
+            return saveAutomationScripts(scriptNamesDoc);
+        }
+    }
+    return success;
+}
+
+// List automation script names
+std::vector<String> SDManager::listAutomationScriptNames() {
+    std::vector<String> scriptNames;
+    JsonDocument doc = loadAutomationScripts();
+    // The automation_scripts.json now directly contains an array of strings
+    if (!doc.isNull() && doc.is<JsonArray>()) { // Check if the root is an array
+        for (JsonVariant v : doc.as<JsonArray>()) {
+            if (v.is<String>()) {
+                scriptNames.push_back(v.as<String>());
+            }
+        }
+    }
+    return scriptNames;
 }

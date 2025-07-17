@@ -4,6 +4,13 @@
 #include <WiFi.h>
 #include "llm_manager.h"
 #include "sd_manager.h" // Include SDManager
+#include <vector> // For std::vector
+
+// Define a struct to hold WiFi credentials
+struct WiFiCredential {
+    String ssid;
+    String password;
+};
 
 class AppWiFiManager {
 public:
@@ -16,7 +23,7 @@ public:
     // WiFi Credential Management
     bool addWiFiCredential(const String& ssid, const String& password);
     bool deleteWiFiCredential(const String& ssid);
-    std::vector<std::pair<String, String>> getSavedCredentials();
+    std::vector<WiFiCredential> getSavedCredentials(); // Change return type to vector of WiFiCredential
 
     // Wi-Fi Killer Mode
     void startWifiKillerMode();

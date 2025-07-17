@@ -110,7 +110,7 @@ void UIManager::handleStateAutoScriptList() {
 
     unsigned long currentTime = millis();
     if (currentTime - lastButtonPressTime > DEBOUNCE_DELAY) {
-        std::vector<String> scripts = sd.listScripts();
+        std::vector<String> scripts = sd.listAutomationScriptNames(); // Use new method
         int itemCount = scripts.size() + 1; // 加1用于“返回”
 
         if (hardware.isButtonPressed(BUTTON_1_PIN)) { // OK键
@@ -123,7 +123,10 @@ void UIManager::handleStateAutoScriptList() {
                 String scriptName = scripts[selectedMenuItem];
                 Serial.print("Executing script: ");
                 Serial.println(scriptName);
-                taskManager.executeTask(scriptName, ""); // 假定脚本名即任务名，暂不传参数
+                // 创建一个空的 JsonObject 作为参数
+                DynamicJsonDocument doc(1); // 最小容量，因为是空的
+                JsonObject params = doc.to<JsonObject>();
+                taskManager.executeTool(scriptName, params); // 假定脚本名即任务名，暂不传参数
                 currentState = UI_STATE_STATUS; // 执行后返回状态界面
             }
         } else if (hardware.isButtonPressed(BUTTON_2_PIN)) { // 上键
@@ -148,11 +151,15 @@ void UIManager::handleStateWifiKiller() {
             // 更健壮的方案应查询wifiManager实际状态
             static bool isKillerModeActive = false; // UI层简单状态跟踪
             if (isKillerModeActive) {
-                taskManager.executeTask("wifi_killer_stop", "");
+                DynamicJsonDocument doc(1);
+                JsonObject params = doc.to<JsonObject>();
+                taskManager.executeTool("wifi_killer_stop", params);
                 isKillerModeActive = false;
                 Serial.println("Wi-Fi Killer Mode: Stopped via UI.");
             } else {
-                taskManager.executeTask("wifi_killer_start", "");
+                DynamicJsonDocument doc(1);
+                JsonObject params = doc.to<JsonObject>();
+                taskManager.executeTool("wifi_killer_start", params);
                 isKillerModeActive = true;
                 Serial.println("Wi-Fi Killer Mode: Started via UI.");
             }
@@ -176,11 +183,19 @@ void UIManager::handleStateTimer() {
             lastButtonPressTime = currentTime;
             // 切换定时器状态：如果正在运行则停止，否则设置并启动默认定时器
             if (taskManager.isTimerRunning()) { // 假定TaskManager有方法检查定时器状态
-                taskManager.executeTask("timer_stop", "");
+                DynamicJsonDocument doc(1);
+                JsonObject params = doc.to<JsonObject>();
+                taskManager.executeTool("timer_stop", params);
             } else {
                 // 简化处理，默认设置5秒定时器
-                taskManager.executeTask("timer_set", "5000"); // 设置5000ms
-                taskManager.executeTask("timer_start", "");
+                DynamicJsonDocument doc(64); // 足够容纳一个int参数
+                JsonObject params = doc.to<JsonObject>();
+                params["duration"] = 5000; // 设置5000ms
+                taskManager.executeTool("timer_set", params);
+
+                DynamicJsonDocument doc2(1);
+                JsonObject params2 = doc2.to<JsonObject>();
+                taskManager.executeTool("timer_start", params2);
             }
             // 可选择返回状态界面或显示定时器状态
             currentState = UI_STATE_STATUS; // 操作后返回状态界面
@@ -272,7 +287,7 @@ void UIManager::drawAutoScriptList() {
         hardware.getDisplay().setFont(u8g2_font_ncenB10_tr);
         hardware.getDisplay().drawStr(0, 12, "Select Script");
 
-        std::vector<String> scripts = sd.listScripts();
+        std::vector<String> scripts = sd.listAutomationScriptNames(); // Use new method
         if (scripts.empty()) {
             hardware.getDisplay().setFont(u8g2_font_ncenB08_tr);
             hardware.getDisplay().drawStr(5, 30, "No scripts found.");
