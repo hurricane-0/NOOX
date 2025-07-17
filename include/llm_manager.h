@@ -2,7 +2,6 @@
 #define LLM_MANAGER_H
 
 #include <Arduino.h>
-#include "sd_manager.h"
 #include <ArduinoJson.h> // Include ArduinoJson for structured responses
 
 enum LLMProvider {
@@ -19,18 +18,15 @@ enum LLMMode {
 
 class LLMManager {
 public:
-    LLMManager(SDManager& sd);
+    LLMManager(); // Modified constructor
     void begin();
     void setProvider(LLMProvider provider);
-    void setApiKey(const String& key);
-    // Removed saveApiKeyToSD() as setApiKey now handles saving
+    void setApiKey(const String& key); // This will now set the hardcoded key
     String generateResponse(const String& prompt, LLMMode mode, const JsonArray& authorizedTools);
 
 private:
-    SDManager& sdManager;
     LLMProvider currentProvider;
-    String apiKey;
-    // API_KEY_FILE is now handled by SDManager's config
+    String apiKey; // API key will be hardcoded or set directly
 
     String getGeminiResponse(const String& prompt, LLMMode mode, const JsonArray& authorizedTools);
     String getDeepSeekResponse(const String& prompt, LLMMode mode, const JsonArray& authorizedTools);

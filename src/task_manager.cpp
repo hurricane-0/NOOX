@@ -2,55 +2,80 @@
 #include "hid_manager.h"
 #include "wifi_manager.h"
 #include "hardware_manager.h" // 引入 HardwareManager 头文件
-#include "ble_manager.h" // 引入 BLEManager 头文件
-#include "timer_manager.h" // 引入 TimerManager 头文件
+// #include "ble_manager.h" // 移除 BLEManager 头文件
+// #include "timer_manager.h" // 移除 TimerManager 头文件
+// #include "sd_manager.h" // 移除 SDManager 头文件
 
-// 初始化静态实例
-TaskManager* TaskManager::_instance = nullptr;
+// 初始化静态实例 (不再需要，因为没有静态回调)
+// TaskManager* TaskManager::_instance = nullptr;
 
-TaskManager::TaskManager(HIDManager& hid, AppWiFiManager& wifi, HardwareManager& hw, TimerManager& timer, BLEManager& ble, SDManager& sd)
-    : hidManager(hid), wifiManager(wifi), hardwareManager(hw), timerManager(timer), bleManager(ble), sdManager(sd) {
-    _instance = this; // 设置静态实例
+// 调整构造函数，移除 TimerManager, BLEManager 和 SDManager 引用
+TaskManager::TaskManager(HIDManager& hid, AppWiFiManager& wifi, HardwareManager& hw)
+    : hidManager(hid), wifiManager(wifi), hardwareManager(hw),
+      currentLLMMode("Chat"), currentTaskStatus("Idle") { // Initialize member variables
+    // _instance = this; // 移除静态实例设置
 }
 
 // LLM 工具调用的新方法
 String TaskManager::executeTool(const String& toolName, const JsonObject& params) {
     Serial.printf("Executing tool: %s\n", toolName.c_str());
+    currentTaskStatus = "Executing: " + toolName; // Update task status for UI
+
     if (toolName.startsWith("usb_hid_")) {
-        return _handleHidTool(toolName, params);
+        String result = _handleHidTool(toolName, params);
+        currentTaskStatus = "Idle"; // Reset status after execution
+        return result;
     } else if (toolName.startsWith("wifi_")) {
-        return _handleWiFiTool(toolName, params);
-    } else if (toolName.startsWith("timer_")) {
-        return _handleTimerTool(toolName, params);
+        // WiFi工具现在只用于WebSocket，不应有外部调用，但保留结构
+        String result = _handleWiFiTool(toolName, params);
+        currentTaskStatus = "Idle";
+        return result;
     } else if (toolName.startsWith("gpio_")) {
-        return _handleGpioTool(toolName, params);
-    } else if (toolName.startsWith("ble_")) {
-        return _handleBleTool(toolName, params);
-    } else if (toolName.startsWith("run_automation_script")) {
-        return _handleAutomationScriptTool(toolName, params);
+        String result = _handleGpioTool(toolName, params);
+        currentTaskStatus = "Idle";
+        return result;
     }
+    currentTaskStatus = "Error: Unknown Tool"; // Update status for unknown tool
     return "错误: 未知工具: " + toolName;
 }
 
-bool TaskManager::isTimerRunning() {
-    return timerManager.isTimerRunning();
+// 移除 isTimerRunning()
+// bool TaskManager::isTimerRunning() {
+//     return timerManager.isTimerRunning();
+// }
+
+// 移除 TimerManager 静态回调相关
+// void IRAM_ATTR TaskManager::onTimerTaskCallback() {
+//     if (_instance) {
+//         _instance->_handleTimerCallback();
+//     }
+// }
+
+// void TaskManager::_handleTimerCallback() {
+//     Serial.println("TaskManager定时器回调被触发!");
+//     currentTaskStatus = "Timer Triggered"; // Update task status
+// }
+
+// 新增用于 UI 显示的方法实现
+String TaskManager::getCurrentLLMMode() {
+    return currentLLMMode;
 }
 
-void IRAM_ATTR TaskManager::onTimerTaskCallback() {
-    if (_instance) {
-        _instance->_handleTimerCallback();
-    }
+String TaskManager::getCurrentTaskStatus() {
+    return currentTaskStatus;
 }
 
-void TaskManager::_handleTimerCallback() {
-    Serial.println("TaskManager定时器回调被触发!");
-    // 可以在此处通过 WebSocket 向 UI 发送消息或触发其他任务
-    // 示例：webManager.broadcast("{\"type\":\"timer_event\", \"status\":\"triggered\"}");
-    // 注意：此处无法直接访问 webManager，需要其他回调机制或全局访问。
+// Methods to update internal state (can be called by WebManager/LLMManager)
+void TaskManager::setLLMMode(const String& mode) {
+    currentLLMMode = mode;
 }
 
+void TaskManager::setTaskStatus(const String& status) {
+    currentTaskStatus = status;
+}
 
 String TaskManager::_handleHidTool(const String& toolName, const JsonObject& params) {
+    // ... (HID tool handling remains the same)
     if (toolName == "usb_hid_keyboard_type") {
         if (params["text"].is<String>()) {
             String text = params["text"].as<String>();
@@ -90,36 +115,33 @@ String TaskManager::_handleHidTool(const String& toolName, const JsonObject& par
 }
 
 String TaskManager::_handleWiFiTool(const String& toolName, const JsonObject& params) {
-    if (toolName == "wifi_killer_scan" || toolName == "wifi_killer_start") {
-        wifiManager.startWifiKillerMode();
-        return "成功: 已启动Wi-Fi Killer模式。";
-    } else if (toolName == "wifi_killer_stop") {
-        wifiManager.stopWifiKillerMode();
-        return "成功: 已停止Wi-Fi Killer模式。";
-    }
-    return "错误: 未识别的 WiFi 工具: " + toolName;
+    // Wi-Fi Killer 模式已移除，此函数现在应为空或仅处理 WebSocket 相关状态（如果需要）
+    // 根据简化要求，Wi-Fi 仅用于 WebSocket 服务器，不应有外部工具调用
+    return "错误: Wi-Fi 工具已移除或不支持此操作: " + toolName;
 }
 
-String TaskManager::_handleTimerTool(const String& toolName, const JsonObject& params) {
-    if (toolName == "timer_set") {
-        if (params["duration"].is<long>()) { // Changed from duration_ms to duration
-            long durationMs = params["duration"].as<long>();
-            timerManager.setTimer(durationMs, TaskManager::onTimerTaskCallback);
-            return "成功: 设置定时器为 " + String(durationMs) + "ms。";
-        } else {
-            return "错误: timer_set 缺少 'duration' 参数。";
-        }
-    } else if (toolName == "timer_start") {
-        timerManager.startTimer();
-        return "成功: 启动定时器。";
-    } else if (toolName == "timer_stop") {
-        timerManager.stopTimer();
-        return "成功: 停止定时器。";
-    }
-    return "错误: 未识别的 Timer 工具: " + toolName;
-}
+// 移除 _handleTimerTool
+// String TaskManager::_handleTimerTool(const String& toolName, const JsonObject& params) {
+//     if (toolName == "timer_set") {
+//         if (params["duration"].is<long>()) {
+//             long durationMs = params["duration"].as<long>();
+//             timerManager.setTimer(durationMs, TaskManager::onTimerTaskCallback);
+//             return "成功: 设置定时器为 " + String(durationMs) + "ms。";
+//         } else {
+//             return "错误: timer_set 缺少 'duration' 参数。";
+//         }
+//     } else if (toolName == "timer_start") {
+//         timerManager.startTimer();
+//         return "成功: 启动定时器。";
+//     } else if (toolName == "timer_stop") {
+//         timerManager.stopTimer();
+//         return "成功: 停止定时器。";
+//     }
+//     return "错误: 未识别的 Timer 工具: " + toolName;
+// }
 
 String TaskManager::_handleGpioTool(const String& toolName, const JsonObject& params) {
+    // ... (GPIO tool handling remains the same)
     if (toolName == "gpio_set_level") {
         if (params["pin"].is<int>() && params["level"].is<int>()) {
             int pin = params["pin"].as<int>();
@@ -140,79 +162,4 @@ String TaskManager::_handleGpioTool(const String& toolName, const JsonObject& pa
     return "错误: 未识别的 GPIO 工具: " + toolName;
 }
 
-String TaskManager::_handleBleTool(const String& toolName, const JsonObject& params) {
-    if (toolName == "ble_scan_devices") {
-        bleManager.startScan(5); // 扫描5秒
-        return "成功: 已启动BLE设备扫描。";
-    }
-    return "错误: 未识别的 BLE 工具: " + toolName;
-}
-
-String TaskManager::_handleAutomationScriptTool(const String& toolName, const JsonObject& params) {
-    if (toolName == "run_automation_script") {
-        if (params["script_name"].is<const char*>()) {
-            String scriptName = String(params["script_name"].as<const char*>());
-            Serial.printf("尝试运行自动化脚本: %s\n", scriptName.c_str());
-
-            JsonDocument scriptsDoc = sdManager.loadAutomationScripts();
-            if (scriptsDoc.isNull() || !scriptsDoc["scripts"].is<JsonArray>()) {
-                String result = "错误: 自动化脚本配置文件无效或没有脚本。";
-                Serial.println(result);
-                return result;
-            }
-
-            JsonArray scriptsArray = scriptsDoc["scripts"].as<JsonArray>();
-            JsonObject scriptToExecute;
-            bool scriptFound = false;
-            for (JsonVariant v : scriptsArray) {
-                JsonObject currentScript = v.as<JsonObject>();
-                if (currentScript["name"] == scriptName) {
-                    scriptToExecute = currentScript;
-                    scriptFound = true;
-                    break;
-                }
-            }
-
-            if (!scriptFound) {
-                String result = "错误: 自动化脚本 '" + scriptName + "' 未找到。";
-                Serial.println(result);
-                return result;
-            }
-
-            if (scriptToExecute["steps"].is<JsonArray>()) {
-                JsonArray steps = scriptToExecute["steps"].as<JsonArray>();
-                Serial.printf("执行脚本 '%s' 中的 %u 步\n", scriptName.c_str(), steps.size());
-                String stepResult = "成功";
-
-                for (JsonVariant stepVariant : steps) {
-                    JsonObject step = stepVariant.as<JsonObject>();
-                    if (step["tool_name"].is<const char*>() && step["parameters"].is<JsonObject>()) {
-                        String stepToolName = String(step["tool_name"].as<const char*>());
-                        JsonObject stepParams = step["parameters"].as<JsonObject>();
-                        Serial.printf("  执行步骤工具: %s\n", stepToolName.c_str());
-                        String currentStepResult = executeTool(stepToolName, stepParams);
-                        if (currentStepResult.startsWith("错误:")) {
-                            stepResult = "错误: 步骤 '" + stepToolName + "' 失败: " + currentStepResult;
-                            Serial.println(stepResult);
-                            break;
-                        }
-                    } else {
-                        stepResult = "错误: 脚本 '" + scriptName + "' 步骤格式无效。缺少 'tool_name' 或 'parameters'。";
-                        Serial.println(stepResult);
-                        break;
-                    }
-                }
-                return "成功: 自动化脚本 '" + scriptName + "' 执行完成。总体结果: " + stepResult;
-            } else {
-                String result = "错误: 自动化脚本 '" + scriptName + "' 没有 'steps' 数组。";
-                Serial.println(result);
-                return result;
-            }
-        } else {
-            String result = "错误: run_automation_script 缺少 'script_name' 参数。";
-            Serial.println(result);
-            return result;
-        }
-    }
-    return "错误: 未识别的自动化脚本工具: " + toolName;
-}
+// Removed _handleBleTool and _handleAutomationScriptTool

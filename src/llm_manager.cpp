@@ -16,17 +16,19 @@ const char* CHATGPT_API_HOST = "api.openai.com";
 const int CHATGPT_API_PORT = 443;
 const char* CHATGPT_API_PATH = "/v1/chat/completions";
 
-// 构造函数
-LLMManager::LLMManager(SDManager& sd) : sdManager(sd), currentProvider(GEMINI) {}
+// 硬编码 API Key
+const String HARDCODED_API_KEY = "YOUR_API_KEY_HERE"; // !!! 请替换为您的实际 API Key !!!
 
-// begin 方法用于加载配置
+// 构造函数
+LLMManager::LLMManager() : currentProvider(GEMINI) {}
+
+// begin 方法用于初始化 API Key
 void LLMManager::begin() {
-    JsonDocument doc = sdManager.loadAPIKeys(); // Use new method
-    if (!doc.isNull() && doc["llm_api_key"].is<String>()) {
-        apiKey = doc["llm_api_key"].as<String>();
-        Serial.println("LLM API Key loaded from SD card.");
+    apiKey = HARDCODED_API_KEY;
+    if (apiKey.length() == 0 || apiKey == "YOUR_API_KEY_HERE") {
+        Serial.println("Warning: LLM API Key is not set or is default placeholder. Please set it in src/llm_manager.cpp.");
     } else {
-        Serial.println("LLM API Key not found in config.");
+        Serial.println("LLM API Key initialized.");
     }
 }
 
@@ -36,17 +38,7 @@ void LLMManager::setProvider(LLMProvider provider) {
 
 void LLMManager::setApiKey(const String& key) {
     apiKey = key;
-    
-    // 保存新密钥到配置文件
-    JsonDocument doc = sdManager.loadAPIKeys(); // Use new method
-    JsonObject config = doc.as<JsonObject>();
-    config["llm_api_key"] = apiKey;
-    
-    if (sdManager.saveAPIKeys(doc)) { // Use new method
-        Serial.println("LLM API Key saved to SD card.");
-    } else {
-        Serial.println("Failed to save LLM API Key.");
-    }
+    Serial.println("LLM API Key updated in memory.");
 }
 
 String LLMManager::generateResponse(const String& prompt, LLMMode mode, const JsonArray& authorizedTools) {
@@ -214,19 +206,7 @@ String LLMManager::generateSystemPrompt(LLMMode mode, const JsonArray& authorize
         prompt += "  }\n";
         prompt += "}\n";
         prompt += "```\n";
-        prompt += "Example of running an automation script:\n";
-        prompt += "```json\n";
-        prompt += "{\n";
-        prompt += "  \"mode\": \"advanced\",\n";
-        prompt += "  \"action\": {\n";
-        prompt += "    \"type\": \"tool_call\",\n";
-        prompt += "    \"tool_name\": \"run_automation_script\",\n";
-        prompt += "    \"parameters\": {\n";
-        prompt += "      \"script_name\": \"configure_cpp_env\"\n";
-        prompt += "    }\n";
-        prompt += "  }\n";
-        prompt += "}\n";
-        prompt += "```\n";
+        // Removed example of running an automation script
     }
     return prompt;
 }
@@ -234,68 +214,18 @@ String LLMManager::generateSystemPrompt(LLMMode mode, const JsonArray& authorize
 String LLMManager::getToolDescriptions(const JsonArray& authorizedTools) {
     String descriptions = "";
     // 已知工具的描述定义。应与 TaskManager 的能力保持同步。
-
-    // 辅助 lambda 用于检查工具是否被授权
-    auto isToolAuthorized = [&](const String& toolName) {
-        if (authorizedTools.isNull() || authorizedTools.size() == 0) {
-            return true; // 如果没有指定授权工具，则默认所有工具可用
-        }
-        for (JsonVariant v : authorizedTools) {
-            if (v.as<String>() == toolName) {
-                return true;
-            }
-        }
-        return false;
-    };
+    // 根据用户要求，高级模式下所有工具都可用，因此不再进行授权检查。
 
     // 示例工具描述（应全面且准确反映 LLM 能力）
     // HID 工具
-    if (isToolAuthorized("usb_hid_keyboard_type")) {
-        descriptions += "- **usb_hid_keyboard_type**: Types a given string on the connected computer via USB HID. Parameters: `{\"text\": \"string_to_type\"}`\n";
-    }
-    if (isToolAuthorized("usb_hid_mouse_click")) {
-        descriptions += "- **usb_hid_mouse_click**: Clicks the mouse at the current cursor position. Parameters: `{\"button\": \"left\"}` (or \"right\", \"middle\")\n";
-    }
-    if (isToolAuthorized("usb_hid_mouse_move")) {
-        descriptions += "- **usb_hid_mouse_move**: Moves the mouse cursor by a specified offset. Parameters: `{\"x\": 10, \"y\": 20}`\n";
-    }
-    // WiFi Killer
-    if (isToolAuthorized("wifi_killer_start")) {
-        descriptions += "- **wifi_killer_start**: Starts the Wi-Fi Killer mode to scan for nearby networks. Parameters: `{}`\n";
-    }
-    if (isToolAuthorized("wifi_killer_stop")) {
-        descriptions += "- **wifi_killer_stop**: Stops the Wi-Fi Killer mode. Parameters: `{}`\n";
-    }
-    // 定时器
-    if (isToolAuthorized("timer_set")) {
-        descriptions += "- **timer_set**: Sets a countdown timer. Parameters: `{\"duration\": 5000}` (duration in milliseconds)\n";
-    }
-    if (isToolAuthorized("timer_start")) {
-        descriptions += "- **timer_start**: Starts the previously set timer. Parameters: `{}`\n";
-    }
-    if (isToolAuthorized("timer_stop")) {
-        descriptions += "- **timer_stop**: Stops the currently running timer. Parameters: `{}`\n";
-    }
+    descriptions += "- **usb_hid_keyboard_type**: Types a given string on the connected computer via USB HID. Parameters: `{\"text\": \"string_to_type\"}`\n";
+    descriptions += "- **usb_hid_mouse_click**: Clicks the mouse at the current cursor position. Parameters: `{\"button\": \"left\"}` (or \"right\", \"middle\")\n";
+    descriptions += "- **usb_hid_mouse_move**: Moves the mouse cursor by a specified offset. Parameters: `{\"x\": 10, \"y\": 20}`\n";
     // GPIO
-    if (isToolAuthorized("gpio_set_level")) {
-        descriptions += "- **gpio_set_level**: Sets the digital level of a specified GPIO pin. Parameters: `{\"pin\": 1, \"level\": 1}` (0 for LOW, 1 for HIGH)\n";
-    }
-    // BLE
-    if (isToolAuthorized("ble_scan_devices")) {
-        descriptions += "- **ble_scan_devices**: Scans for nearby Bluetooth Low Energy devices. Parameters: `{}`\n";
-    }
-
-    // 自动化脚本
-    std::vector<String> scriptNames = sdManager.listAutomationScriptNames();
-    for (const String& scriptName : scriptNames) {
-        // Check if this specific script is authorized
-        if (isToolAuthorized("run_automation_script:" + scriptName)) {
-            descriptions += "- **run_automation_script** (Script: " + scriptName + "): Executes the custom automation script '" + scriptName + "'. Parameters: `{\"script_name\": \"" + scriptName + "\", \"args\": {}}` (args are optional, depending on script)\n";
-        }
-    }
+    descriptions += "- **gpio_set_level**: Sets the digital level of a specified GPIO pin. Parameters: `{\"pin\": 1, \"level\": 1}` (0 for LOW, 1 for HIGH)\n";
 
     if (descriptions.length() == 0) {
-        descriptions = "No specific tools are authorized for use in this session, or no descriptions are available for the authorized tools.";
+        descriptions = "No specific tools are available for use in this session, or no descriptions are available for the authorized tools.";
     }
 
     return descriptions;

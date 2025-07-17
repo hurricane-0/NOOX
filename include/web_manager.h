@@ -9,16 +9,18 @@
 
 class WebManager {
 public:
-    WebManager(LLMManager& llm, TaskManager& task, AppWiFiManager& wifi); // Add AppWiFiManager reference
+    WebManager(LLMManager& llm, TaskManager& task, AppWiFiManager& wifi);
     void begin();
     void loop();
     void broadcast(const String& message);
-    void handleUsbSerialWebRequests(); // Now public
+    // Removed handleUsbSerialWebRequests()
+
+    void setLLMMode(LLMMode mode); // New method to set LLM mode
 
 private:
     LLMManager& llmManager;
     TaskManager& taskManager;
-    AppWiFiManager& wifiManager; // Store reference to AppWiFiManager
+    AppWiFiManager& wifiManager;
     AsyncWebServer server;
     AsyncWebSocket ws;
     LLMMode currentLLMMode; // To store the current LLM mode (CHAT_MODE or ADVANCED_MODE)

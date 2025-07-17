@@ -3,37 +3,26 @@
 
 #include <WiFi.h>
 #include "llm_manager.h"
-#include "sd_manager.h" // Include SDManager
-#include <vector> // For std::vector
+// #include "sd_manager.h" // Removed SDManager include
+// #include <vector> // Removed as WiFiCredential management is removed
 
-// Define a struct to hold WiFi credentials
-struct WiFiCredential {
-    String ssid;
-    String password;
-};
+// Hardcoded WiFi credentials
+extern const char* WIFI_SSID;     // !!! 请替换为您的 WiFi SSID !!!
+extern const char* WIFI_PASSWORD; // !!! 请替换为您的 WiFi 密码 !!!
 
 class AppWiFiManager {
 public:
-    AppWiFiManager(LLMManager& llm, SDManager& sd); // Add SDManager reference
+    AppWiFiManager(LLMManager& llm); // Removed SDManager reference
     void begin();
     void loop();
     String getIPAddress();
     String getWiFiStatus();
     
-    // WiFi Credential Management
-    bool addWiFiCredential(const String& ssid, const String& password);
-    bool deleteWiFiCredential(const String& ssid);
-    std::vector<WiFiCredential> getSavedCredentials(); // Change return type to vector of WiFiCredential
-
-    // Wi-Fi Killer Mode
-    void startWifiKillerMode();
-    void stopWifiKillerMode();
-
 private:
     LLMManager& llmManager;
-    SDManager& sdManager; // Store reference to SDManager
+    // SDManager& sdManager; // Removed SDManager reference
     void connectToWiFi();
-    void loadAndConnect(); // New helper to load credentials and connect
+    // Removed loadAndConnect, WiFi Credential Management, and Wi-Fi Killer Mode functions
 };
 
 #endif // APP_WIFI_MANAGER_H
