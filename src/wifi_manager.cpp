@@ -4,8 +4,8 @@
 // #include <vector> // Removed as WiFiCredential management is removed
 
 // Hardcoded WiFi credentials
-const char* WIFI_SSID = "YOUR_WIFI_SSID";     // !!! 请替换为您的 WiFi SSID !!!
-const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD"; // !!! 请替换为您的 WiFi 密码 !!!
+const char* WIFI_SSID = "CMCC-Tjv9";     // !!! 请替换为您的 WiFi SSID !!!
+const char* WIFI_PASSWORD = "n2w5yk6u"; // !!! 请替换为您的 WiFi 密码 !!!
 
 // Removed Wi-Fi Killer mode includes
 

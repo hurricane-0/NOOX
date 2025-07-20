@@ -17,10 +17,12 @@ void WebManager::begin() {
         Serial.println("An Error has occurred while mounting LittleFS");
         return;
     }
+    Serial.println("LittleFS mounted successfully.");
     setupRoutes();
     ws.onEvent(std::bind(&WebManager::onWebSocketEvent, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5, std::placeholders::_6));
     server.addHandler(&ws);
     server.begin();
+    Serial.println("Web server started on port 80.");
 }
 
 void WebManager::loop() {
@@ -137,15 +139,33 @@ void WebManager::handleWebSocketData(AsyncWebSocketClient * client, void *arg, u
 
 void WebManager::setupRoutes() {
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-        request->send(LittleFS, "/index.html", "text/html");
+        if(LittleFS.exists("/index.html")) {
+            Serial.println("Serving /index.html");
+            request->send(LittleFS, "/index.html", "text/html");
+        } else {
+            Serial.println("/index.html not found on LittleFS!");
+            request->send(404, "text/plain", "File not found");
+        }
     });
 
     server.on("/style.css", HTTP_GET, [](AsyncWebServerRequest *request){
-        request->send(LittleFS, "/style.css", "text/css");
+        if(LittleFS.exists("/style.css")) {
+            Serial.println("Serving /style.css");
+            request->send(LittleFS, "/style.css", "text/css");
+        } else {
+            Serial.println("/style.css not found on LittleFS!");
+            request->send(404, "text/plain", "File not found");
+        }
     });
 
     server.on("/script.js", HTTP_GET, [](AsyncWebServerRequest *request){
-        request->send(LittleFS, "/script.js", "application/javascript");
+        if(LittleFS.exists("/script.js")) {
+            Serial.println("Serving /script.js");
+            request->send(LittleFS, "/script.js", "application/javascript");
+        } else {
+            Serial.println("/script.js not found on LittleFS!");
+            request->send(404, "text/plain", "File not found");
+        }
     });
 
     // 提供静态资源（如有）
