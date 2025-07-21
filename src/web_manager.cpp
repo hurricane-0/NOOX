@@ -13,7 +13,7 @@ WebManager::WebManager(LLMManager& llm, TaskManager& task, AppWiFiManager& wifi)
 }
 
 void WebManager::begin() {
-    if(!LittleFS.begin()){
+    if(!LittleFS.begin(true)){
         Serial.println("An Error has occurred while mounting LittleFS");
         return;
     }

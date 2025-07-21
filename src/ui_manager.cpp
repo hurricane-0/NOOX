@@ -14,7 +14,7 @@ UIManager::UIManager(HardwareManager& hw, AppWiFiManager& wifi, TaskManager& tas
 void UIManager::begin() {
     hardware.getDisplay().clearBuffer();
     hardware.getDisplay().setFont(u8g2_font_ncenB10_tr);
-    hardware.getDisplay().drawStr(0, 20, "Smart AI Platform");
+    hardware.getDisplay().drawStr(0, 20, "AIHi Platform");
     hardware.getDisplay().drawStr(0, 40, "Initializing...");
     hardware.getDisplay().sendBuffer();
     delay(2000);
