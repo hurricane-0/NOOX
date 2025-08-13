@@ -102,7 +102,16 @@
                 <h3>网络与授权</h3>
                 <input type="text" id="wifi-ssid" placeholder="WiFi 名称 (SSID)">
                 <input type="password" id="wifi-password" placeholder="WiFi 密码">
-                <input type="password" id="api-key" placeholder="LLM API Key">
+            </div>
+
+            <div class="setting-section">
+                <h3>API Keys</h3>
+                <input type="password" id="gemini-api-key" placeholder="Gemini API Key">
+                <button id="save-gemini-key-btn" class="primary-btn">保存 Gemini Key</button>
+                <input type="password" id="deepseek-api-key" placeholder="DeepSeek API Key">
+                <button id="save-deepseek-key-btn" class="primary-btn">保存 DeepSeek Key</button>
+                <input type="password" id="chatgpt-api-key" placeholder="ChatGPT API Key">
+                <button id="save-chatgpt-key-btn" class="primary-btn">保存 ChatGPT Key</button>
             </div>
 
             <div class="setting-section">
@@ -112,12 +121,12 @@
                     <option value="gemini">Gemini</option>
                     <option value="chatgpt">ChatGPT</option>
                 </select>
+                <button id="save-llm-provider-btn" class="primary-btn">保存 LLM 提供商</button>
             </div>
 
 
             <div class="settings-buttons">
                 <button class="close-sidebar-btn secondary-btn">关闭</button>
-                <button id="save-settings-btn" class="primary-btn">保存</button>
             </div>
         </div>
     </aside>

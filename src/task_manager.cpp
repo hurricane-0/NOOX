@@ -2,18 +2,11 @@
 #include "hid_manager.h"
 #include "wifi_manager.h"
 #include "hardware_manager.h" // 引入 HardwareManager 头文件
-// #include "ble_manager.h" // 移除 BLEManager 头文件
-// #include "timer_manager.h" // 移除 TimerManager 头文件
-// #include "sd_manager.h" // 移除 SDManager 头文件
-
-// 初始化静态实例 (不再需要，因为没有静态回调)
-// TaskManager* TaskManager::_instance = nullptr;
 
 // 调整构造函数，移除 TimerManager, BLEManager 和 SDManager 引用
 TaskManager::TaskManager(HIDManager& hid, AppWiFiManager& wifi, HardwareManager& hw)
     : hidManager(hid), wifiManager(wifi), hardwareManager(hw),
       currentLLMMode("Chat"), currentTaskStatus("Idle") { // Initialize member variables
-    // _instance = this; // 移除静态实例设置
 }
 
 // LLM 工具调用的新方法
@@ -39,22 +32,6 @@ String TaskManager::executeTool(const String& toolName, const JsonObject& params
     return "错误: 未知工具: " + toolName;
 }
 
-// 移除 isTimerRunning()
-// bool TaskManager::isTimerRunning() {
-//     return timerManager.isTimerRunning();
-// }
-
-// 移除 TimerManager 静态回调相关
-// void IRAM_ATTR TaskManager::onTimerTaskCallback() {
-//     if (_instance) {
-//         _instance->_handleTimerCallback();
-//     }
-// }
-
-// void TaskManager::_handleTimerCallback() {
-//     Serial.println("TaskManager定时器回调被触发!");
-//     currentTaskStatus = "Timer Triggered"; // Update task status
-// }
 
 // 新增用于 UI 显示的方法实现
 String TaskManager::getCurrentLLMMode() {
@@ -120,25 +97,6 @@ String TaskManager::_handleWiFiTool(const String& toolName, const JsonObject& pa
     return "错误: Wi-Fi 工具已移除或不支持此操作: " + toolName;
 }
 
-// 移除 _handleTimerTool
-// String TaskManager::_handleTimerTool(const String& toolName, const JsonObject& params) {
-//     if (toolName == "timer_set") {
-//         if (params["duration"].is<long>()) {
-//             long durationMs = params["duration"].as<long>();
-//             timerManager.setTimer(durationMs, TaskManager::onTimerTaskCallback);
-//             return "成功: 设置定时器为 " + String(durationMs) + "ms。";
-//         } else {
-//             return "错误: timer_set 缺少 'duration' 参数。";
-//         }
-//     } else if (toolName == "timer_start") {
-//         timerManager.startTimer();
-//         return "成功: 启动定时器。";
-//     } else if (toolName == "timer_stop") {
-//         timerManager.stopTimer();
-//         return "成功: 停止定时器。";
-//     }
-//     return "错误: 未识别的 Timer 工具: " + toolName;
-// }
 
 String TaskManager::_handleGpioTool(const String& toolName, const JsonObject& params) {
     // ... (GPIO tool handling remains the same)
@@ -161,5 +119,3 @@ String TaskManager::_handleGpioTool(const String& toolName, const JsonObject& pa
     }
     return "错误: 未识别的 GPIO 工具: " + toolName;
 }
-
-// Removed _handleBleTool and _handleAutomationScriptTool

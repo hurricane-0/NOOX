@@ -14,7 +14,7 @@ body {
     margin: 0;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     color: var(--text-color);
-    background-color: #87999D;
+    background-color: #212224;
     min-height: 100vh;
     display: flex;
     justify-content: center;
@@ -217,7 +217,7 @@ body {
     border: none;
     border-radius: 50%;
     width: 45px;
-    height: 45px;
+    aspect-ratio: 1 / 1; /* Ensures height matches width */
     color: #fff;
     font-size: 1.8em;
     display: flex;

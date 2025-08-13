@@ -16,57 +16,102 @@ const char* CHATGPT_API_HOST = "api.openai.com";
 const int CHATGPT_API_PORT = 443;
 const char* CHATGPT_API_PATH = "/v1/chat/completions";
 
-// 硬编码 API Key
-const String HARDCODED_API_KEY = "YOUR_API_KEY_HERE"; // !!! 请替换为您的实际 API Key !!!
-
 // 构造函数
-LLMManager::LLMManager() : currentProvider(GEMINI) {}
+LLMManager::LLMManager() : currentProvider(DEEPSEEK) { // 初始化当前模型提供商为 DeepSeek
+    // 创建 LLM 请求和响应队列
+    llmRequestQueue = xQueueCreate(5, sizeof(LLMRequest)); // 队列深度为 5
+    llmResponseQueue = xQueueCreate(5, sizeof(LLMResponse)); // 队列深度为 5
 
-// begin 方法用于初始化 API Key
-void LLMManager::begin() {
-    apiKey = HARDCODED_API_KEY;
-    if (apiKey.length() == 0 || apiKey == "YOUR_API_KEY_HERE") {
-        Serial.println("Warning: LLM API Key is not set or is default placeholder. Please set it in src/llm_manager.cpp.");
-    } else {
-        Serial.println("LLM API Key initialized.");
+    if (llmRequestQueue == NULL || llmResponseQueue == NULL) {
+        Serial.println("Error creating LLM queues!");
     }
 }
 
+// begin 方法用于初始化 API Key
+void LLMManager::begin() {
+    // 初始化 API Key，用户需通过 set 方法设置
+    geminiApiKey = "";
+    deepseekApiKey = "sk-1a45bc2364a243c8ab477392509645bb";
+    chatGPTApiKey = "";
+    Serial.println("LLM API Keys initialized. Please set them using the appropriate set functions.");
+}
+
+// 启动 LLM 处理任务
+void LLMManager::startLLMTask() {
+    xTaskCreatePinnedToCore(
+        llmTask,            // 任务函数
+        "LLMTask",          // 任务名称
+        8192 * 4,           // 堆栈大小 (根据需要调整，LLM请求可能需要更多)
+        this,               // 传递 LLMManager 实例指针
+        5,                  // 任务优先级
+        NULL,               // 任务句柄
+        0                   // 运行在核心 0
+    );
+    Serial.println("LLM processing task started.");
+}
+
+// 设置当前使用的 LLM 提供商
 void LLMManager::setProvider(LLMProvider provider) {
     currentProvider = provider;
 }
 
-void LLMManager::setApiKey(const String& key) {
-    apiKey = key;
-    Serial.println("LLM API Key updated in memory.");
+// 设置 Gemini API Key
+void LLMManager::setGeminiApiKey(const String& key) {
+    geminiApiKey = key;
+    Serial.println("Gemini API Key updated in memory.");
 }
 
+// 设置 DeepSeek API Key
+void LLMManager::setDeepSeekApiKey(const String& key) {
+    deepseekApiKey = key;
+    Serial.println("DeepSeek API Key updated in memory.");
+}
+
+// 设置 ChatGPT API Key
+void LLMManager::setChatGPTApiKey(const String& key) {
+    chatGPTApiKey = key;
+    Serial.println("ChatGPT API Key updated in memory.");
+}
+
+// 根据当前模型提供商生成回复
 String LLMManager::generateResponse(const String& prompt, LLMMode mode, const JsonArray& authorizedTools) {
-    if (apiKey.length() == 0) {
-        return "Error: API Key is not set.";
-    }
+    Serial.printf("Largest Free Heap Block before LLM call: %u bytes\n", heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+    // 检查当前模型提供商的 API Key 是否已设置
+    String response;
     switch (currentProvider) {
         case GEMINI:
-            return getGeminiResponse(prompt, mode, authorizedTools);
+            if (geminiApiKey.length() == 0) response = "Error: Gemini API Key is not set.";
+            else response = getGeminiResponse(prompt, mode, authorizedTools);
+            break;
         case DEEPSEEK:
-            return getDeepSeekResponse(prompt, mode, authorizedTools);
+            if (deepseekApiKey.length() == 0) response = "Error: DeepSeek API Key is not set.";
+            else response = getDeepSeekResponse(prompt, mode, authorizedTools);
+            break;
         case CHATGPT:
-            return getChatGPTResponse(prompt, mode, authorizedTools);
+            if (chatGPTApiKey.length() == 0) response = "Error: ChatGPT API Key is not set.";
+            else response = getChatGPTResponse(prompt, mode, authorizedTools);
+            break;
         default:
-            return "Error: Invalid LLM provider.";
+            response = "Error: Invalid LLM provider.";
+            break;
     }
+    Serial.printf("Largest Free Heap Block after LLM call: %u bytes\n", heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+    return response;
 }
 
+// 获取 Gemini 回复
 String LLMManager::getGeminiResponse(const String& prompt, LLMMode mode, const JsonArray& authorizedTools) {
     WiFiClientSecure client;
     client.setInsecure();
+    // 建立到 Gemini API 的连接
     if (!client.connect(GEMINI_API_HOST, GEMINI_API_PORT)) {
         return "Error: Connection to Gemini API failed.";
     }
     
-    String url = String(GEMINI_API_PATH) + apiKey;
+    String url = String(GEMINI_API_PATH) + geminiApiKey;
     JsonDocument doc;
 
+    // 生成系统提示词
     String systemPrompt = generateSystemPrompt(mode, authorizedTools);
     if (systemPrompt.length() > 0) {
         doc["contents"][0]["parts"][0]["text"] = systemPrompt;
@@ -84,6 +129,7 @@ String LLMManager::getGeminiResponse(const String& prompt, LLMMode mode, const J
     int statusCode = http.responseStatusCode();
     String response = http.responseBody();
 
+    // 解析 Gemini API 返回内容
     if (statusCode == 200) {
         JsonDocument responseDoc;
         deserializeJson(responseDoc, response);
@@ -93,9 +139,11 @@ String LLMManager::getGeminiResponse(const String& prompt, LLMMode mode, const J
     }
 }
 
+// 获取 DeepSeek 回复
 String LLMManager::getDeepSeekResponse(const String& prompt, LLMMode mode, const JsonArray& authorizedTools) {
     WiFiClientSecure client;
     client.setInsecure();
+    // 建立到 DeepSeek API 的连接
     if (!client.connect(DEEPSEEK_API_HOST, DEEPSEEK_API_PORT)) {
         return "Error: Connection to DeepSeek API failed.";
     }
@@ -103,6 +151,7 @@ String LLMManager::getDeepSeekResponse(const String& prompt, LLMMode mode, const
     JsonDocument doc;
     doc["model"] = "deepseek-chat";
 
+    // 生成系统提示词
     String systemPrompt = generateSystemPrompt(mode, authorizedTools);
     if (systemPrompt.length() > 0) {
         doc["messages"][0]["role"] = "system";
@@ -120,7 +169,7 @@ String LLMManager::getDeepSeekResponse(const String& prompt, LLMMode mode, const
     HttpClient http(client, DEEPSEEK_API_HOST, DEEPSEEK_API_PORT);
     http.beginRequest();
     http.post(DEEPSEEK_API_PATH);
-    http.sendHeader("Authorization", "Bearer " + apiKey);
+    http.sendHeader("Authorization", "Bearer " + deepseekApiKey);
     http.sendHeader("Content-Type", "application/json");
     http.sendHeader("Content-Length", String(requestBody.length()));
     http.write((const uint8_t*)requestBody.c_str(), requestBody.length());
@@ -129,6 +178,7 @@ String LLMManager::getDeepSeekResponse(const String& prompt, LLMMode mode, const
     int statusCode = http.responseStatusCode();
     String response = http.responseBody();
 
+    // 解析 DeepSeek API 返回内容
     if (statusCode == 200) {
         JsonDocument responseDoc;
         deserializeJson(responseDoc, response);
@@ -138,9 +188,11 @@ String LLMManager::getDeepSeekResponse(const String& prompt, LLMMode mode, const
     }
 }
 
+// 获取 ChatGPT 回复
 String LLMManager::getChatGPTResponse(const String& prompt, LLMMode mode, const JsonArray& authorizedTools) {
     WiFiClientSecure client;
     client.setInsecure();
+    // 建立到 ChatGPT API 的连接
     if (!client.connect(CHATGPT_API_HOST, CHATGPT_API_PORT)) {
         return "Error: Connection to ChatGPT API failed.";
     }
@@ -148,6 +200,7 @@ String LLMManager::getChatGPTResponse(const String& prompt, LLMMode mode, const 
     JsonDocument doc;
     doc["model"] = "gpt-3.5-turbo";
 
+    // 生成系统提示词
     String systemPrompt = generateSystemPrompt(mode, authorizedTools);
     if (systemPrompt.length() > 0) {
         doc["messages"][0]["role"] = "system";
@@ -165,7 +218,7 @@ String LLMManager::getChatGPTResponse(const String& prompt, LLMMode mode, const 
     HttpClient http(client, CHATGPT_API_HOST, CHATGPT_API_PORT);
     http.beginRequest();
     http.post(CHATGPT_API_PATH);
-    http.sendHeader("Authorization", "Bearer " + apiKey);
+    http.sendHeader("Authorization", "Bearer " + chatGPTApiKey);
     http.sendHeader("Content-Type", "application/json");
     http.sendHeader("Content-Length", String(requestBody.length()));
     http.write((const uint8_t*)requestBody.c_str(), requestBody.length());
@@ -174,6 +227,7 @@ String LLMManager::getChatGPTResponse(const String& prompt, LLMMode mode, const 
     int statusCode = http.responseStatusCode();
     String response = http.responseBody();
 
+    // 解析 ChatGPT API 返回内容
     if (statusCode == 200) {
         JsonDocument responseDoc;
         deserializeJson(responseDoc, response);
@@ -183,9 +237,14 @@ String LLMManager::getChatGPTResponse(const String& prompt, LLMMode mode, const 
     }
 }
 
+// 生成系统提示词，根据模式和授权工具
 String LLMManager::generateSystemPrompt(LLMMode mode, const JsonArray& authorizedTools) {
     String prompt = "";
-    if (mode == ADVANCED_MODE) {
+    if (mode == CHAT_MODE) {
+        // 普通聊天模式提示词
+        prompt += "You are a helpful and friendly AI assistant. Respond concisely and accurately to user queries.";
+    } else if (mode == ADVANCED_MODE) {
+        // 高级模式提示词
         prompt += "You are an intelligent assistant capable of controlling a hardware device. ";
         prompt += "In advanced mode, you can call specific tools to interact with the device's peripherals or execute automation scripts. ";
         prompt += "Your response MUST be a JSON object with a 'mode' field set to 'advanced' and an 'action' field. ";
@@ -206,15 +265,16 @@ String LLMManager::generateSystemPrompt(LLMMode mode, const JsonArray& authorize
         prompt += "  }\n";
         prompt += "}\n";
         prompt += "```\n";
-        // Removed example of running an automation script
+        // 已移除自动化脚本示例
     }
     return prompt;
 }
 
+// 获取工具描述信息
 String LLMManager::getToolDescriptions(const JsonArray& authorizedTools) {
     String descriptions = "";
     // 已知工具的描述定义。应与 TaskManager 的能力保持同步。
-    // 根据用户要求，高级模式下所有工具都可用，因此不再进行授权检查。
+    // 高级模式下所有工具都可用，因此不再进行授权检查。
 
     // 示例工具描述（应全面且准确反映 LLM 能力）
     // HID 工具
@@ -229,4 +289,28 @@ String LLMManager::getToolDescriptions(const JsonArray& authorizedTools) {
     }
 
     return descriptions;
+}
+
+// LLM 任务函数
+void LLMManager::llmTask(void* pvParameters) {
+    LLMManager* llmManager = static_cast<LLMManager*>(pvParameters);
+    LLMRequest request;
+    LLMResponse response;
+
+    for (;;) {
+        // 等待 LLM 请求
+        if (xQueueReceive(llmManager->llmRequestQueue, &request, portMAX_DELAY) == pdPASS) {
+            Serial.printf("LLMTask: Received request for prompt: %s\n", request.prompt.c_str());
+            // 调用实际的 LLM 响应生成函数
+            // 注意：这里 authorizedTools 暂时为空 JsonArray，因为队列中不方便传递复杂对象
+            // 如果需要，可以考虑将 authorizedTools 序列化为字符串在请求中传递
+            response.response = llmManager->generateResponse(request.prompt, request.mode, JsonArray());
+            Serial.printf("LLMTask: Generated response: %s\n", response.response.c_str());
+
+            // 将响应发送回 WebManager
+            if (xQueueSend(llmManager->llmResponseQueue, &response, portMAX_DELAY) != pdPASS) {
+                Serial.println("LLMTask: Failed to send response to queue.");
+            }
+        }
+    }
 }

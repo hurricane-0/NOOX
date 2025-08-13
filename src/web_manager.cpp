@@ -5,13 +5,13 @@
 #include <ArduinoJson.h>
 #include <LittleFS.h> // 使用 LittleFS
 
-// Removed AUTHORIZED_TOOLS_DOC_SIZE as authorization is removed
-
+// 构造函数：初始化成员对象和Web服务
 WebManager::WebManager(LLMManager& llm, TaskManager& task, AppWiFiManager& wifi) 
     : llmManager(llm), taskManager(task), wifiManager(wifi), server(80), ws("/ws"),
-      currentLLMMode(CHAT_MODE) { // Removed authorizedToolsDoc and authorizedToolsArray initialization
+      currentLLMMode(CHAT_MODE) {
 }
 
+// 启动Web服务和WebSocket
 void WebManager::begin() {
     if(!LittleFS.begin(true)){
         Serial.println("An Error has occurred while mounting LittleFS");
@@ -25,25 +25,69 @@ void WebManager::begin() {
     Serial.println("Web server started on port 80.");
 }
 
+// WebSocket客户端清理和 LLM 响应处理
 void WebManager::loop() {
     ws.cleanupClients();
+
+    // 检查 LLM 响应队列
+    LLMResponse response;
+    if (xQueueReceive(llmManager.llmResponseQueue, &response, 0) == pdPASS) {
+        Serial.printf("WebManager: Received LLM response from queue: %s\n", response.response.c_str());
+        // 广播 LLM 响应给所有连接的 WebSocket 客户端
+        // 这里需要判断是工具调用结果还是普通聊天消息
+        JsonDocument llmResponseDoc;
+        DeserializationError llmError = deserializeJson(llmResponseDoc, response.response);
+
+        if (!llmError && llmResponseDoc["mode"].is<String>() && llmResponseDoc["mode"].as<String>() == "advanced" &&
+            llmResponseDoc["action"].is<JsonObject>() && llmResponseDoc["action"]["type"].is<String>() &&
+            llmResponseDoc["action"]["type"].as<String>() == "tool_call") {
+            
+            String toolName = llmResponseDoc["action"]["tool_name"].as<String>();
+            JsonObject toolParams = llmResponseDoc["action"]["parameters"].as<JsonObject>();
+
+            Serial.printf("LLM requested tool: %s\n", toolName.c_str());
+            // 通过TaskManager执行工具
+            String taskResult = taskManager.executeTool(toolName, toolParams);
+            
+            JsonDocument responseDoc;
+            responseDoc["type"] = "tool_execution_result";
+            responseDoc["tool_name"] = toolName;
+            responseDoc["result"] = taskResult;
+            
+            String responseStr;
+            serializeJson(responseDoc, responseStr);
+            broadcast(responseStr);
+
+        } else {
+            // 非工具调用，作为普通聊天消息处理
+            JsonDocument responseDoc;
+            responseDoc["type"] = "chat_message";
+            responseDoc["sender"] = "bot";
+            responseDoc["text"] = response.response;
+            String responseStr;
+            serializeJson(responseDoc, responseStr);
+            broadcast(responseStr);
+        }
+    }
 }
 
+// 向所有WebSocket客户端广播消息
 void WebManager::broadcast(const String& message) {
     ws.textAll(message);
 }
 
+// 设置LLM模式，并同步到TaskManager
 void WebManager::setLLMMode(LLMMode mode) {
     currentLLMMode = mode;
-    // Update TaskManager's internal mode for UI display
     if (mode == CHAT_MODE) {
         taskManager.setLLMMode("Chat");
-    } else { // ADVANCED_MODE
+    } else {
         taskManager.setLLMMode("Advanced");
     }
     Serial.printf("LLM Mode set to %s\n", (mode == CHAT_MODE ? "CHAT_MODE" : "ADVANCED_MODE"));
 }
 
+// WebSocket事件处理
 void WebManager::onWebSocketEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventType type, void * arg, uint8_t *data, size_t len) {
     switch (type) {
         case WS_EVT_CONNECT:
@@ -53,7 +97,7 @@ void WebManager::onWebSocketEvent(AsyncWebSocket * server, AsyncWebSocketClient 
             Serial.printf("WebSocket client #%u disconnected\n", client->id());
             break;
         case WS_EVT_DATA:
-            // 将 client 对象传递给 handleWebSocketData
+            // 数据事件：交由handleWebSocketData处理
             handleWebSocketData(client, arg, data, len);
             break;
         case WS_EVT_PONG:
@@ -62,7 +106,7 @@ void WebManager::onWebSocketEvent(AsyncWebSocket * server, AsyncWebSocketClient 
     }
 }
 
-// 修改后的 handleWebSocketData，接受 AsyncWebSocketClient*
+// WebSocket数据处理：解析消息类型并分发
 void WebManager::handleWebSocketData(AsyncWebSocketClient * client, void *arg, uint8_t *data, size_t len) {
     AwsFrameInfo *info = (AwsFrameInfo*)arg;
     if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
@@ -78,65 +122,91 @@ void WebManager::handleWebSocketData(AsyncWebSocketClient * client, void *arg, u
         String type = doc["type"].as<String>();
 
         if (type == "set_llm_mode") {
+            // 设置LLM模式
             String modeStr = doc["mode"].as<String>();
             if (modeStr == "chat") {
                 setLLMMode(CHAT_MODE);
             } else if (modeStr == "advanced") {
                 setLLMMode(ADVANCED_MODE);
             }
-            // 可选：向客户端发送确认信息
             client->text("{\"type\":\"llm_mode_set\", \"status\":\"success\", \"mode\":\"" + modeStr + "\"}");
-        } else if (type == "chat_message") { // Removed set_authorized_tools handling
+        } else if (type == "chat_message") {
+            // 聊天消息处理
             String payload = doc["payload"].as<String>();
             Serial.printf("Received chat message: %s\n", payload.c_str());
 
-            String llmResponse;
-            if (currentLLMMode == CHAT_MODE) {
-                llmResponse = llmManager.generateResponse(payload, CHAT_MODE, JsonArray()); // Pass empty JsonArray
-            } else { // ADVANCED_MODE
-                llmResponse = llmManager.generateResponse(payload, ADVANCED_MODE, JsonArray()); // Pass empty JsonArray
-                
-                // 在高级模式下尝试解析 LLM 响应中的工具调用
-                JsonDocument llmResponseDoc;
-                DeserializationError llmError = deserializeJson(llmResponseDoc, llmResponse);
+            LLMRequest request;
+            request.prompt = payload;
+            request.mode = currentLLMMode;
 
-    if (!llmError && llmResponseDoc["mode"].is<String>() && llmResponseDoc["mode"].as<String>() == "advanced" &&
-        llmResponseDoc["action"].is<JsonObject>() && llmResponseDoc["action"]["type"].is<String>() &&
-                    llmResponseDoc["action"]["type"].as<String>() == "tool_call") {
-                    
-                    String toolName = llmResponseDoc["action"]["tool_name"].as<String>();
-                    JsonObject toolParams = llmResponseDoc["action"]["parameters"].as<JsonObject>();
-
-                    // Removed isToolAuthorized check - all tools are authorized in advanced mode
-                    Serial.printf("LLM requested tool: %s\n", toolName.c_str());
-                    // 通过 TaskManager 执行工具
-                    String taskResult = taskManager.executeTool(toolName, toolParams); // 该方法需在 TaskManager 中实现
-                    
-                    JsonDocument responseDoc;
-                    responseDoc["type"] = "tool_execution_result";
-                    responseDoc["tool_name"] = toolName;
-                    responseDoc["result"] = taskResult;
-                    
-                    String responseStr;
-                    serializeJson(responseDoc, responseStr);
-                    broadcast(responseStr);
-
-                } else {
-                    // 如果高级模式下 LLM 响应不是有效的工具调用 JSON，则作为聊天消息处理
-                    JsonDocument responseDoc;
-                    responseDoc["type"] = "chat_message";
-                    responseDoc["sender"] = "bot";
-                    responseDoc["text"] = llmResponse; // 发送原始 LLM 响应作为文本
-                    String responseStr;
-                    serializeJson(responseDoc, responseStr);
-                    broadcast(responseStr);
-                }
+            // 将请求发送到 LLM 任务队列
+            if (xQueueSend(llmManager.llmRequestQueue, &request, 0) != pdPASS) {
+                Serial.println("Failed to send LLM request to queue.");
+                client->text("{\"type\":\"chat_message\", \"sender\":\"bot\", \"text\":\"Error: Failed to process your request. LLM queue full.\"}");
+            } else {
+                client->text("{\"type\":\"chat_message\", \"sender\":\"bot\", \"text\":\"Processing your request...\"}");
             }
         }
         // Removed save_settings handling as SD card is removed and credentials are hardcoded
     }
 }
 
+// 处理设置 LLM 提供商的 Web 请求
+void WebManager::handleSetLLMProvider(AsyncWebServerRequest *request) {
+    if (request->hasParam("provider", true)) {
+        String providerStr = request->getParam("provider", true)->value();
+        LLMProvider provider;
+        if (providerStr == "gemini") {
+            provider = GEMINI;
+        } else if (providerStr == "deepseek") {
+            provider = DEEPSEEK;
+        } else if (providerStr == "chatgpt") {
+            provider = CHATGPT;
+        } else {
+            request->send(400, "application/json", "{\"status\":\"error\", \"message\":\"Invalid LLM provider specified.\"}");
+            return;
+        }
+        llmManager.setProvider(provider);
+        request->send(200, "application/json", "{\"status\":\"success\", \"message\":\"LLM Provider updated to " + providerStr + ".\"}");
+    } else {
+        request->send(400, "application/json", "{\"status\":\"error\", \"message\":\"Missing provider parameter.\"}");
+    }
+}
+
+// 处理Gemini API Key设置请求
+void WebManager::handleSetGeminiApiKey(AsyncWebServerRequest *request) {
+    if (request->hasParam("apiKey", true)) {
+        String apiKey = request->getParam("apiKey", true)->value();
+        llmManager.setGeminiApiKey(apiKey);
+        request->send(200, "application/json", "{\"status\":\"success\", \"message\":\"Gemini API Key updated.\"}");
+    } else {
+        request->send(400, "application/json", "{\"status\":\"error\", \"message\":\"Missing apiKey parameter.\"}");
+    }
+}
+
+// 处理DeepSeek API Key设置请求
+void WebManager::handleSetDeepSeekApiKey(AsyncWebServerRequest *request) {
+    if (request->hasParam("apiKey", true)) {
+        String apiKey = request->getParam("apiKey", true)->value();
+        llmManager.setDeepSeekApiKey(apiKey);
+        request->send(200, "application/json", "{\"status\":\"success\", \"message\":\"DeepSeek API Key updated.\"}");
+    } else {
+        request->send(400, "application/json", "{\"status\":\"error\", \"message\":\"Missing apiKey parameter.\"}");
+    }
+}
+
+// 处理ChatGPT API Key设置请求
+void WebManager::handleSetChatGPTApiKey(AsyncWebServerRequest *request) {
+    if (request->hasParam("apiKey", true)) {
+        String apiKey = request->getParam("apiKey", true)->value();
+        llmManager.setChatGPTApiKey(apiKey);
+        request->send(200, "application/json", "{\"status\":\"success\", \"message\":\"ChatGPT API Key updated.\"}");
+    } else {
+        request->send(400, "application/json", "{\"status\":\"error\", \"message\":\"Missing apiKey parameter.\"}");
+    }
+}
+
+// 路由设置：静态文件和API接口
 void WebManager::setupRoutes() {
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
         if(LittleFS.exists("/index.html")) {
@@ -168,9 +238,15 @@ void WebManager::setupRoutes() {
         }
     });
 
-    // 提供静态资源（如有）
+    // API Key设置接口
+    server.on("/setGeminiApiKey", HTTP_POST, std::bind(&WebManager::handleSetGeminiApiKey, this, std::placeholders::_1));
+    server.on("/setDeepSeekApiKey", HTTP_POST, std::bind(&WebManager::handleSetDeepSeekApiKey, this, std::placeholders::_1));
+    server.on("/setChatGPTApiKey", HTTP_POST, std::bind(&WebManager::handleSetChatGPTApiKey, this, std::placeholders::_1));
+    server.on("/setLLMProvider", HTTP_POST, std::bind(&WebManager::handleSetLLMProvider, this, std::placeholders::_1));
+
+    // 静态资源接口
     server.on("/assets/.*", HTTP_GET, [](AsyncWebServerRequest *request){
-        request->send(LittleFS, request->url(), "image/svg+xml"); // 如有需要可调整内容类型
+        request->send(LittleFS, request->url(), "image/svg+xml");
     });
 
     server.onNotFound([](AsyncWebServerRequest *request){

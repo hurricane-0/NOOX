@@ -1,19 +1,10 @@
 #include "wifi_manager.h"
 #include <WiFi.h>
-// #include <ArduinoJson.h> // Removed as config is hardcoded
-// #include <vector> // Removed as WiFiCredential management is removed
 
 // Hardcoded WiFi credentials
-const char* WIFI_SSID = "SSID";     // !!! 请替换为您的 WiFi SSID !!!
-const char* WIFI_PASSWORD = "PASSWORD"; // !!! 请替换为您的 WiFi 密码 !!!
+const char* WIFI_SSID = "CMCC-Tjv9";     // !!! 请替换为您的 WiFi SSID !!!
+const char* WIFI_PASSWORD = "n2w5yk6u"; // !!! 请替换为您的 WiFi 密码 !!!
 
-// Removed Wi-Fi Killer mode includes
-
-// Removed static promiscuous mode callback global pointer
-
-// Removed packet sniffer callback function
-
-// Updated constructor to remove SDManager reference
 AppWiFiManager::AppWiFiManager(LLMManager& llm) 
     : llmManager(llm) {
 }
@@ -23,7 +14,7 @@ void AppWiFiManager::begin() {
 }
 
 void AppWiFiManager::loop() {
-    // 保持活动或检查状态（如有需要）
+    // 保持活动或检查状态
     if (WiFi.status() != WL_CONNECTED) {
         connectToWiFi(); // 尝试重新连接
     }

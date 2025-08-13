@@ -18,12 +18,16 @@ WebManager webManager(llmManager, taskManager, wifiManager); // 调整构造函�
 
 void setup() {
     Serial.begin(115200);
+    delay(500);
+    Serial.println("Setup starting...");
     hardwareManager.begin();
     llmManager.begin();
+    llmManager.startLLMTask(); // 启动 LLM 处理任务
     wifiManager.begin();
     uiManager.begin();
     hidManager.begin();
     webManager.begin();
+    Serial.println("Setup complete. Starting main loop...");
 }
 void loop() {
     hardwareManager.update();
