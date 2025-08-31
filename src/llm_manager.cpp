@@ -31,7 +31,7 @@ LLMManager::LLMManager() : currentProvider(DEEPSEEK) { // 初始化当前模型�
 void LLMManager::begin() {
     // 初始化 API Key，用户需通过 set 方法设置
     geminiApiKey = "";
-    deepseekApiKey = "sk-1a45bc2364a243c8ab477392509645bb";
+    deepseekApiKey = "";
     chatGPTApiKey = "";
     Serial.println("LLM API Keys initialized. Please set them using the appropriate set functions.");
 }
