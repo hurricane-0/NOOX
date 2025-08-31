@@ -1,322 +1,298 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // --- 元素选择器 ---
-    // 对话模式按钮
+    // --- Global State ---
+    let websocket; // WebSocket连接对象
+    let currentConfig = {}; // 当前配置数据
+
+    // --- Element Selectors ---
+    // 获取页面上的主要DOM元素
     const dialogueModeBtn = document.getElementById('dialogue-mode-btn');
-    // 高级模式按钮
     const advancedModeBtn = document.getElementById('advanced-mode-btn');
-    // 高级模式面板，包含工具选择等
     const advancedModePanels = document.getElementById('advanced-mode-panels');
-    // 设置按钮
     const settingsBtn = document.getElementById('settings-btn');
-    // 设置侧边栏
     const settingsSidebar = document.getElementById('settings-sidebar');
-    // 关闭设置侧边栏按钮
     const closeSidebarBtn = settingsSidebar.querySelector('.close-sidebar-btn');
-    // 消息输入框
     const messageInput = document.getElementById('message-input');
-    // 发送消息按钮
     const sendBtn = document.getElementById('send-btn');
-    // 消息显示容器
     const messagesContainer = document.getElementById('messages');
-    // 所有功能项（工具）
-    const functionItems = document.querySelectorAll('.function-item');
-    
-    // 设置侧边栏中的元素
-    const wifiSsidInput = document.getElementById('wifi-ssid'); // WiFi SSID 输入框
-    const wifiPasswordInput = document.getElementById('wifi-password'); // WiFi 密码输入框
-    const geminiApiKeyInput = document.getElementById('gemini-api-key'); // Gemini API 密钥输入框
-    const deepseekApiKeyInput = document.getElementById('deepseek-api-key'); // DeepSeek API 密钥输入框
-    const chatgptApiKeyInput = document.getElementById('chatgpt-api-key'); // ChatGPT API 密钥输入框
-    const saveGeminiKeyBtn = document.getElementById('save-gemini-key-btn'); // 保存 Gemini 密钥按钮
-    const saveDeepseekKeyBtn = document.getElementById('save-deepseek-key-btn'); // 保存 DeepSeek 密钥按钮
-    const saveChatGPTKeyBtn = document.getElementById('save-chatgpt-key-btn'); // 保存 ChatGPT 密钥按钮
-    const llmSelect = document.getElementById('llm-select'); // LLM 选择下拉框
-    const saveLlmProviderBtn = document.getElementById('save-llm-provider-btn'); // 保存 LLM 提供商按钮
 
-    let websocket; // WebSocket 实例
+    // --- New Settings Panel Elements ---
+    // 设置面板相关元素
+    const llmProviderSelect = document.getElementById('llm-provider-select');
+    const llmModelSelect = document.getElementById('llm-model-select');
+    const llmApiKeyInput = document.getElementById('llm-api-key');
+    const wifiNetworkSelect = document.getElementById('wifi-network-select');
+    const wifiConnectBtn = document.getElementById('wifi-connect-btn');
+    const wifiDisconnectBtn = document.getElementById('wifi-disconnect-btn');
+    const wifiDeleteBtn = document.getElementById('wifi-delete-btn');
+    const wifiSsidInput = document.getElementById('wifi-ssid-input');
+    const wifiPasswordInput = document.getElementById('wifi-password-input');
+    const wifiAddBtn = document.getElementById('wifi-add-btn');
+    const saveSettingsBtn = document.getElementById('save-settings-btn');
 
-    // --- 核心功能函数 ---
-    /**
-     * @brief 在消息容器中添加一条新消息。
-     * @param text 消息文本内容。
-     * @param sender 消息发送者（'user', 'ai', 'system', 'system-error'）。
-     */
+    // --- Core Functions ---
+    // 添加消息到聊天窗口
     function appendMessage(text, sender) {
         const messageElement = document.createElement('div');
         messageElement.classList.add('message', sender);
         messageElement.textContent = text;
         messagesContainer.appendChild(messageElement);
-        // 滚动到最新消息
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
 
-    /**
-     * @brief 通过 WebSocket 向 ESP32 设备发送数据。
-     * @param data 要发送的数据对象，将被转换为 JSON 字符串。
-     */
+    // 通过WebSocket发送数据到ESP32
     function sendToESP32(data) {
         if (websocket && websocket.readyState === WebSocket.OPEN) {
             websocket.send(JSON.stringify(data));
         } else {
-            console.warn('WebSocket 未连接。无法发送数据。');
-            appendMessage('无法发送消息，连接未建立。', 'system-error');
+            console.warn('WebSocket not connected.');
+            appendMessage('Cannot send message, connection not established.', 'system-error');
         }
     }
 
-    // --- WebSocket 初始化 ---
-    /**
-     * @brief 初始化 WebSocket 连接。
-     *
-     * 设置 WebSocket 的连接、消息接收、错误和关闭事件处理。
-     */
+    // --- WebSocket Initialization ---
+    // 初始化WebSocket连接
     function initWebSocket() {
-        // 连接到当前主机的 WebSocket 服务
         websocket = new WebSocket(`ws://${location.host}/ws`);
-
-        // WebSocket 连接成功时触发
         websocket.onopen = () => {
-            console.log('WebSocket 已连接');
-            appendMessage('已连接到设备。', 'system');
+            console.log('WebSocket connected');
+            appendMessage('Connected to device.', 'system');
         };
-
-        // 收到来自 ESP32 的消息时触发
         websocket.onmessage = (event) => {
-            console.log('收到来自 ESP32 的消息:', event.data);
+            console.log('Message from ESP32:', event.data);
             try {
                 const data = JSON.parse(event.data);
-                // 后端发送多种消息类型，但对于聊天界面，主要关注 'chat_message' 或原始文本。
+                // 处理不同类型的消息
                 if (data.type === 'chat_message' && data.sender === 'bot') {
                     appendMessage(data.text, 'ai');
                 } else if (data.type === 'tool_execution_result') {
-                    // 显示工具执行结果
-                    const resultText = `工具 '${data.tool_name}' 已执行。结果: ${data.result}`;
-                    appendMessage(resultText, 'system');
+                    appendMessage(`Tool '${data.tool_name}' executed. Result: ${data.result}`, 'system');
                 } else {
-                     // 其他 JSON 消息或纯文本的备用处理
                     appendMessage(event.data, 'ai');
                 }
             } catch (e) {
-                // 如果数据不是 JSON，则作为纯文本显示
                 appendMessage(event.data, 'ai');
             }
         };
-
-        // WebSocket 连接出错时触发
         websocket.onerror = (event) => {
-            console.error('WebSocket 错误:', event);
-            appendMessage('WebSocket 连接出错。', 'system-error');
+            console.error('WebSocket error:', event);
+            appendMessage('WebSocket connection error.', 'system-error');
         };
-
-        // WebSocket 连接关闭时触发
         websocket.onclose = () => {
-            console.log('WebSocket 已关闭');
-            appendMessage('连接已断开。', 'system-error');
+            console.log('WebSocket closed');
+            appendMessage('Connection disconnected.', 'system-error');
         };
     }
 
-    // --- UI 逻辑 ---
-    /**
-     * @brief 发送用户输入的消息。
-     *
-     * 获取输入框内容，添加到消息列表，并通过 WebSocket 发送给 ESP32。
-     */
+    // --- Settings Panel Logic ---
+    // 更新LLM相关UI
+    function updateLLMUI() {
+        const providers = Object.keys(currentConfig.llm_providers || {});
+        llmProviderSelect.innerHTML = providers.map(p => `<option value="${p}">${p}</option>`).join('');
+        
+        const selectedProvider = currentConfig.last_used.llm_provider;
+        if (selectedProvider) {
+            llmProviderSelect.value = selectedProvider;
+            updateModelUI();
+            llmApiKeyInput.value = currentConfig.llm_providers[selectedProvider].api_key || '';
+        }
+    }
+
+    // 更新模型选择UI
+    function updateModelUI() {
+        const selectedProvider = llmProviderSelect.value;
+        const models = currentConfig.llm_providers[selectedProvider]?.models || [];
+        llmModelSelect.innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
+        
+        const selectedModel = currentConfig.last_used.model;
+        if (models.includes(selectedModel)) {
+            llmModelSelect.value = selectedModel;
+        }
+    }
+
+    // 更新WiFi网络选择UI
+    function updateWiFiUI() {
+        const networks = currentConfig.wifi_networks || [];
+        wifiNetworkSelect.innerHTML = networks.map(n => `<option value="${n.ssid}">${n.ssid}</option>`).join('');
+        
+        const lastUsedSSID = currentConfig.last_used.wifi_ssid;
+        if (lastUsedSSID) {
+            wifiNetworkSelect.value = lastUsedSSID;
+        }
+    }
+
+    // 加载设备设置
+    async function loadSettings() {
+        try {
+            const response = await fetch('/api/config');
+            if (!response.ok) throw new Error('Failed to fetch config');
+            currentConfig = await response.json();
+            console.log('Settings loaded:', currentConfig);
+            updateLLMUI();
+            updateWiFiUI();
+        } catch (error) {
+            console.error('Error loading settings:', error);
+            appendMessage('Could not load device settings.', 'system-error');
+        }
+    }
+
+    // 保存设置到设备
+    async function saveSettings() {
+        // Update currentConfig from UI before saving
+        const selectedProvider = llmProviderSelect.value;
+        currentConfig.last_used.llm_provider = selectedProvider;
+        currentConfig.last_used.model = llmModelSelect.value;
+        if (currentConfig.llm_providers[selectedProvider]) {
+            currentConfig.llm_providers[selectedProvider].api_key = llmApiKeyInput.value.trim();
+        }
+
+        try {
+            const response = await fetch('/api/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(currentConfig)
+            });
+            const result = await response.json();
+            if (result.status === 'success') {
+                appendMessage('Settings saved and applied.', 'system');
+                settingsSidebar.classList.remove('open');
+            } else {
+                throw new Error(result.message);
+            }
+        } catch (error) {
+            console.error('Error saving settings:', error);
+            appendMessage(`Error saving settings: ${error.message}`, 'system-error');
+        }
+    }
+
+    // --- UI Logic ---
+    // 发送消息到聊天窗口和设备
     function sendMessage() {
         const messageText = messageInput.value.trim();
         if (messageText) {
-            appendMessage(messageText, 'user'); // 在UI上显示用户消息
-            sendToESP32({ type: 'chat_message', payload: messageText }); // 通过WebSocket发送给ESP32
-            messageInput.value = ''; // 清空输入框
-            messageInput.style.height = 'auto'; // 重置输入框高度
+            appendMessage(messageText, 'user');
+            sendToESP32({ type: 'chat_message', payload: messageText });
+            messageInput.value = '';
+            messageInput.style.height = 'auto';
         }
     }
-    
-    /**
-     * @brief 更新授权工具列表并发送给 ESP32。
-     *
-     * 遍历所有功能项，收集当前激活的工具，并通过 WebSocket 发送。
-     */
-    function updateAuthorizedTools() {
-        const authorizedTools = [];
-        functionItems.forEach(item => {
-            const autoBtn = item.querySelector('.auto-btn');
-            if (autoBtn.classList.contains('active')) {
-                const toolName = item.querySelector('span').textContent;
-                authorizedTools.push(toolName);
-            }
-        });
-        sendToESP32({ type: 'set_authorized_tools', tools: authorizedTools });
-    }
 
-    // --- 事件监听器 ---
-    // 对话模式按钮点击事件
+    // --- Event Listeners ---
+    // 对话模式按钮事件
     dialogueModeBtn.addEventListener('click', () => {
         dialogueModeBtn.classList.add('active');
         advancedModeBtn.classList.remove('active');
-        advancedModePanels.style.display = 'none'; // 隐藏高级模式面板
-        sendToESP32({ type: 'set_llm_mode', mode: 'chat' }); // 通知ESP32切换到聊天模式
+        advancedModePanels.style.display = 'none';
+        sendToESP32({ type: 'set_llm_mode', mode: 'chat' });
     });
 
-    // 高级模式按钮点击事件
+    // 高级模式按钮事件
     advancedModeBtn.addEventListener('click', () => {
         advancedModeBtn.classList.add('active');
         dialogueModeBtn.classList.remove('active');
-        advancedModePanels.style.display = 'flex'; // 显示高级模式面板
-        sendToESP32({ type: 'set_llm_mode', mode: 'advanced' }); // 通知ESP32切换到高级模式
-        updateAuthorizedTools(); // 发送当前工具授权状态
+        advancedModePanels.style.display = 'flex';
+        sendToESP32({ type: 'set_llm_mode', mode: 'advanced' });
     });
 
-    // 设置按钮点击事件
+    // 打开设置侧边栏
     settingsBtn.addEventListener('click', () => {
-        settingsSidebar.classList.add('open'); // 打开设置侧边栏
+        loadSettings(); // Refresh settings every time the panel is opened
+        settingsSidebar.classList.add('open');
     });
 
-    // 关闭侧边栏按钮点击事件
+    // 关闭设置侧边栏
     closeSidebarBtn.addEventListener('click', () => {
-        settingsSidebar.classList.remove('open'); // 关闭设置侧边栏
+        settingsSidebar.classList.remove('open');
     });
 
-    // 消息输入框内容变化事件，用于自动调整高度
+    // 输入框自适应高度
     messageInput.addEventListener('input', () => {
         messageInput.style.height = 'auto';
         messageInput.style.height = `${messageInput.scrollHeight}px`;
     });
 
-    // 发送按钮点击事件
+    // 发送按钮事件
     sendBtn.addEventListener('click', sendMessage);
-
-    // 消息输入框按键事件，回车发送消息（Shift+Enter 换行）
-    messageInput.addEventListener('keypress', (event) => {
-        if (event.key === 'Enter' && !event.shiftKey) {
-            event.preventDefault(); // 阻止默认回车行为
+    // 回车发送消息（Shift+Enter换行）
+    messageInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
             sendMessage();
         }
     });
 
-    // 遍历所有功能项，为每个工具的“自动”按钮添加点击事件
-    functionItems.forEach(item => {
-        const autoBtn = item.querySelector('.auto-btn');
-        autoBtn.addEventListener('click', () => {
-            autoBtn.classList.toggle('active'); // 切换激活状态
-            // 如果当前处于高级模式，立即更新工具授权状态
-            if (advancedModeBtn.classList.contains('active')) {
-                updateAuthorizedTools();
-            }
-        });
+    // --- New Settings Panel Event Listeners ---
+    // LLM提供商切换事件
+    llmProviderSelect.addEventListener('change', () => {
+        const selectedProvider = llmProviderSelect.value;
+        llmApiKeyInput.value = currentConfig.llm_providers[selectedProvider]?.api_key || '';
+        updateModelUI();
     });
 
-    // 保存 Gemini API 密钥的事件监听器
-    saveGeminiKeyBtn.addEventListener('click', () => {
-        const apiKey = geminiApiKeyInput.value.trim();
-        if (apiKey) {
-            fetch('/setGeminiApiKey', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: `apiKey=${encodeURIComponent(apiKey)}`
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    appendMessage('Gemini API Key 已更新。', 'system');
-                } else {
-                    appendMessage(`Gemini API Key 更新失败: ${data.message}`, 'system-error');
-                }
-            })
-            .catch(error => {
-                console.error('错误:', error);
-                appendMessage('Gemini API Key 更新时发生错误。', 'system-error');
-            });
+    // 保存设置按钮事件
+    saveSettingsBtn.addEventListener('click', saveSettings);
+
+    // 添加WiFi网络事件
+    wifiAddBtn.addEventListener('click', () => {
+        const ssid = wifiSsidInput.value.trim();
+        const password = wifiPasswordInput.value.trim();
+        if (!ssid) {
+            alert('Please enter a WiFi SSID.');
+            return;
+        }
+
+        const existingNetwork = currentConfig.wifi_networks.find(n => n.ssid === ssid);
+        if (existingNetwork) {
+            existingNetwork.password = password;
         } else {
-            alert('请输入 Gemini API Key。');
+            currentConfig.wifi_networks.push({ ssid, password });
+        }
+        
+        wifiSsidInput.value = '';
+        wifiPasswordInput.value = '';
+        updateWiFiUI();
+        appendMessage(`WiFi network '${ssid}' saved locally. Click "Save & Apply" to send to device.`, 'system');
+    });
+
+    // 连接WiFi事件
+    wifiConnectBtn.addEventListener('click', async () => {
+        const ssid = wifiNetworkSelect.value;
+        if (!ssid) return;
+        try {
+            const response = await fetch('/api/wifi/connect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `ssid=${encodeURIComponent(ssid)}`
+            });
+            const result = await response.json();
+            appendMessage(result.message, result.status === 'success' ? 'system' : 'system-error');
+        } catch (error) {
+            appendMessage(`Error connecting to WiFi: ${error.message}`, 'system-error');
         }
     });
 
-    // 保存 DeepSeek API 密钥的事件监听器
-    saveDeepseekKeyBtn.addEventListener('click', () => {
-        const apiKey = deepseekApiKeyInput.value.trim();
-        if (apiKey) {
-            fetch('/setDeepSeekApiKey', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: `apiKey=${encodeURIComponent(apiKey)}`
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    appendMessage('DeepSeek API Key 已更新。', 'system');
-                } else {
-                    appendMessage(`DeepSeek API Key 更新失败: ${data.message}`, 'system-error');
-                }
-            })
-            .catch(error => {
-                console.error('错误:', error);
-                appendMessage('DeepSeek API Key 更新时发生错误。', 'system-error');
-            });
-        } else {
-            alert('请输入 DeepSeek API Key。');
+    // 断开WiFi事件
+    wifiDisconnectBtn.addEventListener('click', async () => {
+        try {
+            const response = await fetch('/api/wifi/disconnect', { method: 'POST' });
+            const result = await response.json();
+            appendMessage(result.message, result.status === 'success' ? 'system' : 'system-error');
+        } catch (error) {
+            appendMessage(`Error disconnecting WiFi: ${error.message}`, 'system-error');
         }
     });
 
-    // 保存 ChatGPT API 密钥的事件监听器
-    saveChatGPTKeyBtn.addEventListener('click', () => {
-        const apiKey = chatgptApiKeyInput.value.trim();
-        if (apiKey) {
-            fetch('/setChatGPTApiKey', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: `apiKey=${encodeURIComponent(apiKey)}`
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    appendMessage('ChatGPT API Key 已更新。', 'system');
-                } else {
-                    appendMessage(`ChatGPT API Key 更新失败: ${data.message}`, 'system-error');
-                }
-            })
-            .catch(error => {
-                console.error('错误:', error);
-                appendMessage('ChatGPT API Key 更新时发生错误。', 'system-error');
-            });
-        } else {
-            alert('请输入 ChatGPT API Key。');
-        }
+    // 删除WiFi网络事件
+    wifiDeleteBtn.addEventListener('click', () => {
+        const ssid = wifiNetworkSelect.value;
+        if (!ssid) return;
+
+        currentConfig.wifi_networks = currentConfig.wifi_networks.filter(n => n.ssid !== ssid);
+        updateWiFiUI();
+        appendMessage(`WiFi network '${ssid}' deleted locally. Click "Save & Apply" to send to device.`, 'system');
     });
 
-    // 保存 LLM 提供商的事件监听器
-    saveLlmProviderBtn.addEventListener('click', () => {
-        const selectedProvider = llmSelect.value;
-        if (selectedProvider) {
-            fetch('/setLLMProvider', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: `provider=${encodeURIComponent(selectedProvider)}`
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    appendMessage(`LLM 提供商已更新为: ${selectedProvider}。`, 'system');
-                } else {
-                    appendMessage(`LLM 提供商更新失败: ${data.message}`, 'system-error');
-                }
-            })
-            .catch(error => {
-                console.error('错误:', error);
-                appendMessage('LLM 提供商更新时发生错误。', 'system-error');
-            });
-        } else {
-            alert('请选择一个 LLM 提供商。');
-        }
-    });
-
-    // --- 初始化执行 ---
-    appendMessage('欢迎使用 AIHi！正在尝试连接设备...', 'system');
-    initWebSocket(); // 初始化 WebSocket 连接
+    // --- Initialization ---
+    // 页面初始化，显示欢迎信息并尝试连接设备
+    appendMessage('Welcome to AIHi! Attempting to connect to device...', 'system');
+    initWebSocket();
 });

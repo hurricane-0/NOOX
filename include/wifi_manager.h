@@ -3,26 +3,41 @@
 
 #include <WiFi.h>
 #include "llm_manager.h"
-// #include "sd_manager.h" // Removed SDManager include
-// #include <vector> // Removed as WiFiCredential management is removed
-
-// Hardcoded WiFi credentials
-extern const char* WIFI_SSID;     // !!! 请替换为您的 WiFi SSID !!!
-extern const char* WIFI_PASSWORD; // !!! 请替换为您的 WiFi 密码 !!!
+#include "config_manager.h"
+#include <ArduinoJson.h>
 
 class AppWiFiManager {
 public:
-    AppWiFiManager(LLMManager& llm); // Removed SDManager reference
+    AppWiFiManager(LLMManager& llm, ConfigManager& config);
     void begin();
     void loop();
     String getIPAddress();
     String getWiFiStatus();
-    
+
+    // New public methods for WiFi management
+    bool connectToWiFi(const String& ssid);
+    void disconnect();
+    bool addWiFi(const String& ssid, const String& password);
+    bool deleteWiFi(const String& ssid);
+    JsonArray getSavedSSIDs();
+
 private:
     LLMManager& llmManager;
-    // SDManager& sdManager; // Removed SDManager reference
-    void connectToWiFi();
-    // Removed loadAndConnect, WiFi Credential Management, and Wi-Fi Killer Mode functions
+    ConfigManager& configManager;
+    
+    enum WiFiConnectionState {
+        IDLE,
+        CONNECTING,
+        CONNECTED,
+        FAILED
+    };
+
+    WiFiConnectionState _connectionState = IDLE;
+    unsigned long _connectionAttemptStartTime = 0;
+    const long WIFI_CONNECTION_TIMEOUT_MS = 30000; // 30 seconds timeout
+
+    void connectToLastSSID();
+    void handleWiFiConnection();
 };
 
 #endif // APP_WIFI_MANAGER_H

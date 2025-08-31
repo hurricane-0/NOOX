@@ -99,33 +99,41 @@
             <h2>设置</h2>
 
             <div class="setting-section">
-                <h3>网络与授权</h3>
-                <input type="text" id="wifi-ssid" placeholder="WiFi 名称 (SSID)">
-                <input type="password" id="wifi-password" placeholder="WiFi 密码">
-            </div>
-
-            <div class="setting-section">
-                <h3>API Keys</h3>
-                <input type="password" id="gemini-api-key" placeholder="Gemini API Key">
-                <button id="save-gemini-key-btn" class="primary-btn">保存 Gemini Key</button>
-                <input type="password" id="deepseek-api-key" placeholder="DeepSeek API Key">
-                <button id="save-deepseek-key-btn" class="primary-btn">保存 DeepSeek Key</button>
-                <input type="password" id="chatgpt-api-key" placeholder="ChatGPT API Key">
-                <button id="save-chatgpt-key-btn" class="primary-btn">保存 ChatGPT Key</button>
-            </div>
-
-            <div class="setting-section">
-                <h3>LLM 提供商</h3>
-                <select id="llm-select">
-                    <option value="deepseek">DeepSeek</option>
-                    <option value="gemini">Gemini</option>
-                    <option value="chatgpt">ChatGPT</option>
+                <h3>LLM 设置</h3>
+                <label for="llm-provider-select">提供商</label>
+                <select id="llm-provider-select">
+                    <!-- Options will be populated by JS -->
                 </select>
-                <button id="save-llm-provider-btn" class="primary-btn">保存 LLM 提供商</button>
+                <label for="llm-model-select">模型</label>
+                <select id="llm-model-select">
+                    <!-- Options will be populated by JS -->
+                </select>
+                <label for="llm-api-key">API Key</label>
+                <input type="password" id="llm-api-key" placeholder="当前提供商的 API Key">
             </div>
 
+            <div class="setting-section">
+                <h3>WiFi 管理</h3>
+                <label for="wifi-network-select">已存网络</label>
+                <select id="wifi-network-select">
+                    <!-- Options will be populated by JS -->
+                </select>
+                <div class="wifi-buttons">
+                    <button id="wifi-connect-btn" class="primary-btn">连接</button>
+                    <button id="wifi-disconnect-btn" class="secondary-btn">断开</button>
+                    <button id="wifi-delete-btn" class="danger-btn">忘记</button>
+                </div>
+            </div>
+
+            <div class="setting-section">
+                <h3>添加/更新 WiFi</h3>
+                <input type="text" id="wifi-ssid-input" placeholder="WiFi 名称 (SSID)">
+                <input type="password" id="wifi-password-input" placeholder="WiFi 密码">
+                <button id="wifi-add-btn" class="primary-btn">保存网络</button>
+            </div>
 
             <div class="settings-buttons">
+                <button id="save-settings-btn" class="primary-btn">保存并应用</button>
                 <button class="close-sidebar-btn secondary-btn">关闭</button>
             </div>
         </div>
