@@ -1,77 +1,86 @@
 #include "config_manager.h"
 
+// 构造函数
 ConfigManager::ConfigManager() {
 }
 
+// 初始化 LittleFS 文件系统
 bool ConfigManager::begin() {
-    if (!LittleFS.begin(true)) {
-        Serial.println("Failed to mount LittleFS");
+    if (!LittleFS.begin(true)) { // 尝试挂载 LittleFS
+        Serial.println("Failed to mount LittleFS"); // 挂载失败
         return false;
     }
-    return true;
+    return true; // 挂载成功
 }
 
+// 加载配置文件
 bool ConfigManager::loadConfig() {
-    File configFile = LittleFS.open(configFilePath, "r");
-    if (!configFile) {
-        Serial.println("Failed to open config file for reading, creating default.");
-        // Create a default configuration
-        configDoc["last_used"]["llm_provider"] = "deepseek";
-        configDoc["last_used"]["model"] = "deepseek-chat";
-        configDoc["last_used"]["wifi_ssid"] = ""; // Placeholder
+    File configFile = LittleFS.open(configFilePath, "r"); // 以只读模式打开配置文件
+    if (!configFile) { // 如果文件不存在或无法打开
+        Serial.println("Failed to open config file for reading, creating default."); // 打印信息，创建默认配置
+        // 创建默认配置
+        configDoc["last_used"]["llm_provider"] = "deepseek"; // 默认 LLM 提供商
+        configDoc["last_used"]["model"] = "deepseek-chat";   // 默认模型
+        configDoc["last_used"]["wifi_ssid"] = "";            // WiFi SSID 占位符
 
+        // DeepSeek LLM 提供商配置
         JsonObject deepseek = configDoc["llm_providers"]["deepseek"].to<JsonObject>();
-        deepseek["api_key"] = "";
-        deepseek["models"].add("deepseek-chat");
-        deepseek["models"].add("deepseek-reasoner");
+        deepseek["api_key"] = ""; // DeepSeek API 密钥
+        deepseek["models"].add("deepseek-chat");     // DeepSeek 聊天模型
+        deepseek["models"].add("deepseek-reasoner"); // DeepSeek 推理模型
 
+        // OpenRouter LLM 提供商配置
         JsonObject openrouter = configDoc["llm_providers"]["openrouter"].to<JsonObject>();
-        openrouter["api_key"] = "";
-        openrouter["models"].add("google/gemini-pro");
-        openrouter["models"].add("openai/gpt-4o");
+        openrouter["api_key"] = ""; // OpenRouter API 密钥
+        openrouter["models"].add("google/gemini-pro"); // OpenRouter 支持的 Gemini 模型
+        openrouter["models"].add("openai/gpt-4o");     // OpenRouter 支持的 GPT-4o 模型
 
-        JsonObject google_gemini = configDoc["llm_providers"]["google_gemini"].to<JsonObject>();
-        google_gemini["api_key"] = "";
-        google_gemini["models"].add("gemini-pro");
-        google_gemini["models"].add("gemini-1.5-flash");
+        // OpenAI LLM 提供商配置
+        JsonObject openai = configDoc["llm_providers"]["openai"].to<JsonObject>();
+        openai["api_key"] = ""; // OpenAI API 密钥
+        openai["models"].add("gpt-4o");       // OpenAI GPT-4o 模型
+        openai["models"].add("gpt-3.5-turbo"); // OpenAI GPT-3.5-turbo 模型
 
+        // WiFi 网络配置
         JsonArray wifiNetworks = configDoc["wifi_networks"].to<JsonArray>();
         JsonObject defaultWifi = wifiNetworks.add<JsonObject>();
-        defaultWifi["ssid"] = ""; // Placeholder
-        defaultWifi["password"] = ""; // Placeholder
+        defaultWifi["ssid"] = "";     // WiFi SSID 占位符
+        defaultWifi["password"] = ""; // WiFi 密码占位符
 
-        return saveConfig();
+        return saveConfig(); // 保存默认配置
     }
 
-    DeserializationError error = deserializeJson(configDoc, configFile);
-    configFile.close();
-    if (error) {
-        Serial.println("Failed to parse config file");
+    DeserializationError error = deserializeJson(configDoc, configFile); // 反序列化 JSON 配置
+    configFile.close(); // 关闭文件
+    if (error) { // 如果解析失败
+        Serial.println("Failed to parse config file"); // 打印错误信息
         return false;
     }
     
-    Serial.println("Configuration loaded successfully.");
-    return true;
+    Serial.println("Configuration loaded successfully."); // 打印加载成功信息
+    return true; // 加载成功
 }
 
+// 保存配置文件
 bool ConfigManager::saveConfig() {
-    File configFile = LittleFS.open(configFilePath, "w");
-    if (!configFile) {
-        Serial.println("Failed to open config file for writing");
+    File configFile = LittleFS.open(configFilePath, "w"); // 以写入模式打开配置文件
+    if (!configFile) { // 如果文件不存在或无法打开
+        Serial.println("Failed to open config file for writing"); // 打印错误信息
         return false;
     }
 
-    if (serializeJson(configDoc, configFile) == 0) {
-        Serial.println("Failed to write to config file");
-        configFile.close();
+    if (serializeJson(configDoc, configFile) == 0) { // 如果序列化 JSON 失败
+        Serial.println("Failed to write to config file"); // 打印错误信息
+        configFile.close(); // 关闭文件
         return false;
     }
 
-    configFile.close();
-    Serial.println("Configuration saved.");
-    return true;
+    configFile.close(); // 关闭文件
+    Serial.println("Configuration saved."); // 打印保存成功信息
+    return true; // 保存成功
 }
 
+// 获取配置文档的引用
 JsonDocument& ConfigManager::getConfig() {
-    return configDoc;
+    return configDoc; // 返回配置文档
 }
