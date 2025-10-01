@@ -34,7 +34,16 @@ document.addEventListener('DOMContentLoaded', () => {
     function appendMessage(text, sender) {
         const messageElement = document.createElement('div');
         messageElement.classList.add('message', sender);
-        messageElement.textContent = text;
+        
+        const textNode = document.createTextNode(text);
+        messageElement.appendChild(textNode);
+
+        const timestampElement = document.createElement('span');
+        timestampElement.classList.add('timestamp');
+        const now = new Date();
+        timestampElement.textContent = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+        messageElement.appendChild(timestampElement);
+
         messagesContainer.appendChild(messageElement);
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
@@ -181,7 +190,7 @@ document.addEventListener('DOMContentLoaded', () => {
     dialogueModeBtn.addEventListener('click', () => {
         dialogueModeBtn.classList.add('active');
         advancedModeBtn.classList.remove('active');
-        advancedModePanels.style.display = 'none';
+        advancedModePanels.classList.remove('active'); // Remove active class
         sendToESP32({ type: 'set_llm_mode', mode: 'chat' });
     });
 
@@ -189,7 +198,7 @@ document.addEventListener('DOMContentLoaded', () => {
     advancedModeBtn.addEventListener('click', () => {
         advancedModeBtn.classList.add('active');
         dialogueModeBtn.classList.remove('active');
-        advancedModePanels.style.display = 'flex';
+        advancedModePanels.classList.add('active'); // Add active class
         sendToESP32({ type: 'set_llm_mode', mode: 'advanced' });
     });
 
