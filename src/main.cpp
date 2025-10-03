@@ -16,38 +16,51 @@ USBMSC usb_msc_driver; // Instantiate USBMSC
 
 HardwareManager hardwareManager;
 ConfigManager configManager;
-LLMManager llmManager(configManager);
-AppWiFiManager wifiManager(llmManager, configManager);
+AppWiFiManager wifiManager(configManager); // Corrected constructor
 HIDManager hidManager;
+
+// Declare pointers for LLMManager, UsbShellManager, and WebManager to handle circular dependency and initialization order
+LLMManager* llmManagerPtr;
+UsbShellManager* usbShellManagerPtr;
+WebManager* webManagerPtr; // Declare WebManager pointer
+
 TaskManager taskManager(hidManager, wifiManager, hardwareManager);
 UIManager uiManager(hardwareManager, wifiManager, taskManager);
-WebManager webManager(llmManager, taskManager, wifiManager, configManager);
-UsbShellManager usbShellManager(&llmManager); // Instantiate UsbShellManager
 
 void setup() {
-    Serial.begin(115200);
+    // Initialize UART1 for serial output
+    Serial1.begin(115200, SERIAL_8N1, UART1_RX_PIN, UART1_TX_PIN);
     delay(500);
-    Serial.println("Setup starting...");
+    Serial1.println("Setup starting...");
 
     hardwareManager.begin();
     
     configManager.begin();
     configManager.loadConfig();
 
-    llmManager.begin();
-    llmManager.startLLMTask();
-    
+    // Instantiate UsbShellManager first, passing nullptr for LLMManager initially
+    usbShellManagerPtr = new UsbShellManager(nullptr, &wifiManager);
+    // Instantiate LLMManager, passing the UsbShellManager pointer
+    llmManagerPtr = new LLMManager(configManager, wifiManager, usbShellManagerPtr);
+    // Resolve circular dependency by setting LLMManager in UsbShellManager
+    usbShellManagerPtr->setLLMManager(llmManagerPtr);
+
     wifiManager.begin();
+    
+    llmManagerPtr->begin();
+    llmManagerPtr->startLLMTask();
     uiManager.begin();
     hidManager.begin();
-    webManager.begin();
+    // Instantiate WebManager after LLMManager and UsbShellManager are initialized
+    webManagerPtr = new WebManager(*llmManagerPtr, taskManager, wifiManager, configManager);
+    webManagerPtr->begin();
 
     // Initialize LittleFS for MSD
     if (!LittleFS.begin()) {
-        Serial.println("LittleFS Mount Failed!");
+        Serial1.println("LittleFS Mount Failed!");
         return;
     }
-    Serial.println("LittleFS Mounted.");
+    Serial1.println("LittleFS Mounted.");
 
     // Get LittleFS capacity information
     uint32_t total_bytes = LittleFS.totalBytes();
@@ -66,19 +79,21 @@ void setup() {
 
     // Call USBMSC::begin with LittleFS capacity information
     if (usb_msc_driver.begin(block_count, block_size)) {
-        Serial.println("USB MSC driver started successfully");
+        Serial1.println("USB MSC driver started successfully");
     } else {
-        Serial.println("USB MSC driver failed to start");
+        Serial1.println("USB MSC driver failed to start");
     }
 
-    usbShellManager.begin(); // Initialize UsbShellManager
-    
-    Serial.println("Setup complete. Starting main loop...");
+    usbShellManagerPtr->begin(); // Initialize UsbShellManager
+
+    wifiManager.addWiFi("CMCC-Tjv9", "n2w5yk6u");
+    wifiManager.connectToWiFi("CMCC-Tjv9", "n2w5yk6u");
+    Serial1.println("Setup complete. Starting main loop...");
 }
 void loop() {
     hardwareManager.update();
     wifiManager.loop();
     uiManager.update();
-    webManager.loop();
-    usbShellManager.loop(); // Call UsbShellManager loop
+    webManagerPtr->loop(); // Call WebManager loop
+    usbShellManagerPtr->loop(); // Call UsbShellManager loop
 }

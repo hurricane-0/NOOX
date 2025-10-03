@@ -7,7 +7,7 @@ ConfigManager::ConfigManager() {
 // 初始化 LittleFS 文件系统
 bool ConfigManager::begin() {
     if (!LittleFS.begin(true)) { // 尝试挂载 LittleFS
-        Serial.println("Failed to mount LittleFS"); // 挂载失败
+        Serial1.println("Failed to mount LittleFS"); // 挂载失败
         return false;
     }
     return true; // 挂载成功
@@ -17,7 +17,7 @@ bool ConfigManager::begin() {
 bool ConfigManager::loadConfig() {
     File configFile = LittleFS.open(configFilePath, "r"); // 以只读模式打开配置文件
     if (!configFile) { // 如果文件不存在或无法打开
-        Serial.println("Failed to open config file for reading, creating default."); // 打印信息，创建默认配置
+        Serial1.println("Failed to open config file for reading, creating default."); // 打印信息，创建默认配置
         // 创建默认配置
         configDoc["last_used"]["llm_provider"] = "deepseek"; // 默认 LLM 提供商
         configDoc["last_used"]["model"] = "deepseek-chat";   // 默认模型
@@ -53,11 +53,11 @@ bool ConfigManager::loadConfig() {
     DeserializationError error = deserializeJson(configDoc, configFile); // 反序列化 JSON 配置
     configFile.close(); // 关闭文件
     if (error) { // 如果解析失败
-        Serial.println("Failed to parse config file"); // 打印错误信息
+        Serial1.println("Failed to parse config file"); // 打印错误信息
         return false;
     }
     
-    Serial.println("Configuration loaded successfully."); // 打印加载成功信息
+    Serial1.println("Configuration loaded successfully."); // 打印加载成功信息
     return true; // 加载成功
 }
 
@@ -65,18 +65,18 @@ bool ConfigManager::loadConfig() {
 bool ConfigManager::saveConfig() {
     File configFile = LittleFS.open(configFilePath, "w"); // 以写入模式打开配置文件
     if (!configFile) { // 如果文件不存在或无法打开
-        Serial.println("Failed to open config file for writing"); // 打印错误信息
+        Serial1.println("Failed to open config file for writing"); // 打印错误信息
         return false;
     }
 
     if (serializeJson(configDoc, configFile) == 0) { // 如果序列化 JSON 失败
-        Serial.println("Failed to write to config file"); // 打印错误信息
+        Serial1.println("Failed to write to config file"); // 打印错误信息
         configFile.close(); // 关闭文件
         return false;
     }
 
     configFile.close(); // 关闭文件
-    Serial.println("Configuration saved."); // 打印保存成功信息
+    Serial1.println("Configuration saved."); // 打印保存成功信息
     return true; // 保存成功
 }
 

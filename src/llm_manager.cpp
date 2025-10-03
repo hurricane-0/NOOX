@@ -1,215 +1,138 @@
 #include "llm_manager.h"
+#include "usb_shell_manager.h" // Include the full header for UsbShellManager
 #include <HttpClient.h>
 #include <WiFiClientSecure.h>
 
-// Define the size of the JSON document buffer for LLM responses
-const size_t JSON_DOC_SIZE = 2048; // Increased size for potentially larger LLM responses
+// 为LLM响应定义JSON文档缓冲区的大小
+const size_t JSON_DOC_SIZE = 2048; // 为可能更大的LLM响应增加了大小
 
-// 定义 API 端点 - 某些提供商可能共享主机，可以进行整合
+// 定义 API 端点
 const char* DEEPSEEK_API_HOST = "api.deepseek.com";
 const char* OPENROUTER_API_HOST = "openrouter.ai";
-const char* OPENAI_API_HOST = "api.openai.com"; // 明确定义 OpenAI 主机
+const char* OPENAI_API_HOST = "api.openai.com";
 
 // 构造函数
-LLMManager::LLMManager(ConfigManager& config) : configManager(config) {
-    // 创建 LLM 请求队列，最多可存储 5 个请求
+LLMManager::LLMManager(ConfigManager& config, AppWiFiManager& wifi, UsbShellManager* usbShellManager)
+    : configManager(config), wifiManager(wifi), _usbShellManager(usbShellManager) {
+    // 创建 LLM 请求队列，用于接收来自其他模块的请求
     llmRequestQueue = xQueueCreate(5, sizeof(LLMRequest));
-    // 创建 LLM 响应队列，最多可存储 5 个响应
+    // 创建 LLM 响应队列，用于发送处理完的响应给请求者
     llmResponseQueue = xQueueCreate(5, sizeof(LLMResponse));
 
     // 检查队列是否成功创建
     if (llmRequestQueue == NULL || llmResponseQueue == NULL) {
-        Serial.println("Error creating LLM queues!"); // 打印错误信息
+        Serial1.println("Error creating LLM queues!");
     }
 }
 
-// begin 方法用于加载配置
+// 初始化方法，用于加载配置
 void LLMManager::begin() {
-    configManager.loadConfig(); // Load config into the internal JsonDocument
-    JsonDocument& config = configManager.getConfig(); // Get reference to the loaded config
-    // 从配置中获取当前使用的 LLM 提供商
+    configManager.loadConfig(); // 加载配置到内部的JsonDocument
+    JsonDocument& config = configManager.getConfig(); // 获取加载后配置的引用
+    // 从配置中获取上次使用的 LLM 提供商
     currentProvider = config["last_used"]["llm_provider"].as<String>();
-    // 从配置中获取当前使用的模型
+    // 从配置中获取上次使用的模型
     currentModel = config["last_used"]["model"].as<String>();
     // 从配置中获取当前提供商的 API 密钥
     currentApiKey = config["llm_providers"][currentProvider]["api_key"].as<String>();
 
     // 打印 LLMManager 初始化信息
-    Serial.printf("LLMManager initialized. Provider: %s, Model: %s\n", currentProvider.c_str(), currentModel.c_str());
+    Serial1.printf("LLMManager initialized. Provider: %s, Model: %s\n", currentProvider.c_str(), currentModel.c_str());
 }
 
-// 启动 LLM 处理任务
+// 启动 LLM 后台处理任务
 void LLMManager::startLLMTask() {
-    // 创建一个 FreeRTOS 任务，将其固定在核心 0 上
+    // 创建一个 FreeRTOS 任务，用于在后台处理LLM请求，避免阻塞主循环
     xTaskCreatePinnedToCore(
-        llmTask, "LLMTask", 8192 * 2, this, 5, NULL, 0);
-    Serial.println("LLM processing task started."); // 打印任务启动信息
+        llmTask,          // 任务函数
+        "LLMTask",        // 任务名称
+        8192 * 2,         // 任务堆栈大小
+        this,             // 传递给任务的参数（指向当前对象的指针）
+        5,                // 任务优先级
+        NULL,             // 任务句柄（此处不使用）
+        0);               // 运行的核心
+    Serial1.println("LLM processing task started.");
 }
 
-// 根据当前提供商生成响应
-String LLMManager::generateResponse(const String& prompt, LLMMode mode, const String& authorizedToolsJson) {
-    // 打印 LLM 调用前最大的空闲堆内存块大小
-    Serial.printf("Largest Free Heap Block before LLM call: %u bytes\n", heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+// 根据当前提供商生成响应（此函数由后台任务调用）
+String LLMManager::generateResponse(const String& requestId, const String& prompt, LLMMode mode) {
+    // 检查WiFi是否连接
+    if (wifiManager.getWiFiStatus() != "Connected") {
+        return "Error: WiFi is not connected.";
+    }
+
+    // 打印 LLM 调用前最大的空闲堆内存块大小，用于调试内存使用情况
+    Serial1.printf("Largest Free Heap Block before LLM call: %u bytes\n", heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
     
     // 检查 API 密钥是否已设置
     if (currentApiKey.length() == 0) {
-        return "Error: API Key is not set for the current provider."; // 返回错误信息
+        return "Error: API Key is not set for the current provider.";
     }
-
-    // Deserialize authorizedToolsJson back to JsonArray
-    JsonDocument toolsDoc;
-    DeserializationError toolsError = deserializeJson(toolsDoc, authorizedToolsJson);
-    if (toolsError) {
-        Serial.printf("Failed to deserialize authorizedToolsJson: %s\n", toolsError.c_str());
-        // Handle error, perhaps return an empty JsonArray or an error message
-        return "Error: Failed to parse authorized tools.";
-    }
-    JsonArray authorizedTools = toolsDoc.as<JsonArray>();
 
     String response;
-    // 如果当前提供商是 DeepSeek、OpenRouter 或 OpenAI，则调用 getOpenAILikeResponse
+    // 根据当前提供商，调用相应的处理函数
     if (currentProvider == "deepseek" || currentProvider == "openrouter" || currentProvider == "openai") {
-        response = getOpenAILikeResponse(prompt, mode, authorizedTools);
+        response = getOpenAILikeResponse(requestId, prompt, mode);
     } else {
-        response = "Error: Invalid LLM provider selected."; // 返回错误信息
+        response = "Error: Invalid LLM provider selected.";
     }
 
     // 打印 LLM 调用后最大的空闲堆内存块大小
-    Serial.printf("Largest Free Heap Block after LLM call: %u bytes\n", heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+    Serial1.printf("Largest Free Heap Block after LLM call: %u bytes\n", heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
     return response;
 }
 
-String LLMManager::processUserInput(const String& userInput) {
+// 处理来自主机的用户输入
+void LLMManager::processUserInput(const String& requestId, const String& userInput) {
     String prompt = "User input: " + userInput;
 
-    JsonDocument emptyToolsDoc;
-    JsonArray authorizedTools = emptyToolsDoc.to<JsonArray>();
-    String authorizedToolsJson;
-    serializeJson(authorizedTools, authorizedToolsJson);
-
+    // 构造LLM请求
     LLMRequest request;
+    request.requestId = requestId;
     request.prompt = prompt;
-    request.mode = ADVANCED_MODE;
-    request.authorizedToolsJson = authorizedToolsJson;
+    request.mode = ADVANCED_MODE; // Shell通信使用高级模式
 
+    // 将请求发送到队列，等待后台任务处理
     if (xQueueSend(llmRequestQueue, &request, portMAX_DELAY) != pdPASS) {
-        Serial.println("processUserInput: Failed to send request to queue.");
-        return "Error: Failed to send request to LLM task.";
+        Serial1.println("processUserInput: Failed to send request to queue.");
+        _usbShellManager->sendAiResponseToHost(requestId, "Error: Failed to send request to LLM task.");
     }
-
-    LLMResponse response;
-    if (xQueueReceive(llmResponseQueue, &response, portMAX_DELAY) != pdPASS) {
-        Serial.println("processUserInput: Failed to receive response from queue.");
-        return "Error: Failed to receive response from LLM task.";
-    }
-    String llmRawResponse = response.response;
-
-    JsonDocument responseDoc;
-    DeserializationError error = deserializeJson(responseDoc, llmRawResponse);
-
-    JsonDocument hostResponseDoc;
-    String formattedResponse;
-
-    // If the LLM response is not valid JSON, treat it as a simple AI response.
-    if (error) {
-        hostResponseDoc["type"] = "aiResponse";
-        hostResponseDoc["payload"] = llmRawResponse;
-        ArduinoJson::serializeJson(hostResponseDoc, formattedResponse);
-        return formattedResponse;
-    }
-
-    // Check if the response is a tool call for executing a shell command.
-    if (responseDoc["tool_calls"].is<JsonArray>()) {
-        JsonArray toolCalls = responseDoc["tool_calls"].as<JsonArray>();
-        if (toolCalls.size() > 0 && toolCalls[0]["name"].is<String>() && toolCalls[0]["name"].as<String>() == "execute_shell_command") {
-            hostResponseDoc["type"] = "shellCommand";
-            hostResponseDoc["payload"] = toolCalls[0]["args"]["command"].as<String>();
-        } else {
-            // Otherwise, treat it as a standard AI response.
-            hostResponseDoc["type"] = "aiResponse";
-            hostResponseDoc["payload"] = llmRawResponse;
-        }
-    } else {
-        // Otherwise, treat it as a standard AI response.
-        hostResponseDoc["type"] = "aiResponse";
-        hostResponseDoc["payload"] = llmRawResponse;
-    }
-
-    serializeJson(hostResponseDoc, formattedResponse);
-    return formattedResponse;
+    // 响应将在 llmTask 中处理
 }
 
-String LLMManager::processShellOutput(const String& cmd, const String& output, const String& err) {
+// 处理来自主机的shell命令执行结果
+void LLMManager::processShellOutput(const String& requestId, const String& cmd, const String& output, const String& error, const String& status, int exitCode) {
+    // 将上一个命令及其输出作为上下文，构建新的提示
     String prompt = "Previous shell command: " + cmd + "\n";
     prompt += "STDOUT: " + output + "\n";
-    prompt += "STDERR: " + err + "\n";
+    prompt += "STDERR: " + error + "\n";
+    prompt += "Status: " + status + "\n";
+    prompt += "Exit Code: " + String(exitCode) + "\n";
     prompt += "Based on the above shell output, what should be the next action or response?";
 
-    JsonDocument emptyToolsDoc;
-    JsonArray authorizedTools = emptyToolsDoc.to<JsonArray>();
-    String authorizedToolsJson;
-    serializeJson(authorizedTools, authorizedToolsJson);
-
+    // 构造LLM请求
     LLMRequest request;
+    request.requestId = requestId;
     request.prompt = prompt;
     request.mode = ADVANCED_MODE;
-    request.authorizedToolsJson = authorizedToolsJson;
 
+    // 发送请求到队列
     if (xQueueSend(llmRequestQueue, &request, portMAX_DELAY) != pdPASS) {
-        Serial.println("processShellOutput: Failed to send request to queue.");
-        return "Error: Failed to send request to LLM task.";
+        Serial1.println("processShellOutput: Failed to send request to queue.");
+        _usbShellManager->sendAiResponseToHost(requestId, "Error: Failed to send request to LLM task.");
     }
-
-    LLMResponse response;
-    if (xQueueReceive(llmResponseQueue, &response, portMAX_DELAY) != pdPASS) {
-        Serial.println("processShellOutput: Failed to receive response from queue.");
-        return "Error: Failed to receive response from LLM task.";
-    }
-    String llmRawResponse = response.response;
-
-    JsonDocument responseDoc;
-    DeserializationError error = deserializeJson(responseDoc, llmRawResponse);
-
-    JsonDocument hostResponseDoc;
-    String formattedResponse;
-
-    // If the LLM response is not valid JSON, treat it as a simple AI response.
-    if (error) {
-        hostResponseDoc["type"] = "aiResponse";
-        hostResponseDoc["payload"] = llmRawResponse;
-        serializeJson(hostResponseDoc, formattedResponse);
-        return formattedResponse;
-    }
-
-    // Check if the response is a tool call for executing a shell command.
-    if (responseDoc["tool_calls"].is<JsonArray>()) {
-        JsonArray toolCalls = responseDoc["tool_calls"].as<JsonArray>();
-        if (toolCalls.size() > 0 && toolCalls[0]["name"].is<String>() && toolCalls[0]["name"].as<String>() == "execute_shell_command") {
-            hostResponseDoc["type"] = "shellCommand";
-            hostResponseDoc["payload"] = toolCalls[0]["args"]["command"].as<String>();
-        } else {
-            // Otherwise, treat it as a standard AI response.
-            hostResponseDoc["type"] = "aiResponse";
-            hostResponseDoc["payload"] = llmRawResponse;
-        }
-    } else {
-        // Otherwise, treat it as a standard AI response.
-        hostResponseDoc["type"] = "aiResponse";
-        hostResponseDoc["payload"] = llmRawResponse;
-    }
-
-    serializeJson(hostResponseDoc, formattedResponse);
-    return formattedResponse;
+    // 响应将在 llmTask 中处理
 }
 
 
-// 获取类 OpenAI 响应 (DeepSeek, OpenRouter, OpenAI)
-String LLMManager::getOpenAILikeResponse(const String& prompt, LLMMode mode, const JsonArray& authorizedTools) {
-    WiFiClientSecure client; // 创建安全 WiFi 客户端
-    client.setInsecure(); // 允许不安全的连接
+// 获取类 OpenAI 格式的响应 (适用于 DeepSeek, OpenRouter, OpenAI)
+String LLMManager::getOpenAILikeResponse(const String& requestId, const String& prompt, LLMMode mode) {
+    WiFiClientSecure client; // 创建一个安全的 WiFi 客户端实例
+    client.setInsecure(); // 设置为不安全的，以跳过SSL证书验证（方便开发，生产环境需谨慎）
+
     
-    const char* apiHost; // API 主机
-    String apiPath; // API 路径
+    const char* apiHost; // API 主机地址
+    String apiPath;      // API 请求路径
 
     // 根据当前提供商设置 API 主机和路径
     if (currentProvider == "openrouter") {
@@ -222,87 +145,105 @@ String LLMManager::getOpenAILikeResponse(const String& prompt, LLMMode mode, con
         apiHost = OPENAI_API_HOST;
         apiPath = "/v1/chat/completions";
     } else {
-        return "Error: Invalid OpenAI-like provider selected."; // 返回错误信息
+        return "Error: Invalid OpenAI-like provider selected.";
     }
 
-    // 连接到 API 主机
+    // 尝试连接到 API 主机
     if (!client.connect(apiHost, 443)) {
-        return "Error: Connection to API failed."; // 返回连接失败错误
+        return "Error: Connection to API host " + String(apiHost) + " failed.";
     }
 
-    JsonDocument doc; // 创建 JSON 文档
-    doc["model"] = currentModel; // 设置模型
+    // 构建请求的JSON体
+    JsonDocument doc;
+    doc["model"] = currentModel; // 设置模型名称
 
-    String systemPrompt = generateSystemPrompt(mode, authorizedTools); // 生成系统提示
-    // 根据系统提示的长度构建消息数组
+    String systemPrompt = generateSystemPrompt(mode); // 生成系统提示
+    // 根据系统提示是否存在，构建不同的消息数组结构
     if (systemPrompt.length() > 0) {
-        doc["messages"].add<JsonObject>(); // Add a new object for system message
+        doc["messages"].add<JsonObject>(); // 为系统消息添加一个新对象
         doc["messages"][0]["role"] = "system";
         doc["messages"][0]["content"] = systemPrompt;
-        doc["messages"].add<JsonObject>(); // Add a new object for user message
+        doc["messages"].add<JsonObject>(); // 为用户消息添加一个新对象
         doc["messages"][1]["role"] = "user";
         doc["messages"][1]["content"] = prompt;
     } else {
-        doc["messages"].add<JsonObject>(); // Add a new object for user message
+        doc["messages"].add<JsonObject>(); // 为用户消息添加一个新对象
         doc["messages"][0]["role"] = "user";
         doc["messages"][0]["content"] = prompt;
     }
     
-    String requestBody; // 请求体字符串
+    String requestBody;
     serializeJson(doc, requestBody); // 将 JSON 文档序列化为字符串
 
-    HttpClient http(client, apiHost, 443); // 创建 HTTP 客户端
-    http.beginRequest(); // 开始 HTTP 请求
-    http.post(apiPath); // 发送 POST 请求到指定路径
-    http.sendHeader("Authorization", "Bearer " + currentApiKey); // 发送授权头
-    http.sendHeader("Content-Type", "application/json"); // 发送内容类型头
-    http.sendHeader("Content-Length", String(requestBody.length())); // 发送内容长度头
-    // 如果是 OpenRouter，需要额外的 HTTP-Referer 头
+    // 发送HTTP POST请求
+    HttpClient http(client, apiHost, 443);
+    http.setTimeout(15000); // Set a 15-second timeout
+    http.beginRequest();
+    http.post(apiPath);
+    http.sendHeader("Authorization", "Bearer " + currentApiKey);
+    http.sendHeader("Content-Type", "application/json");
+    http.sendHeader("Content-Length", String(requestBody.length()));
+    // OpenRouter 需要一个额外的HTTP-Referer头
     if (currentProvider == "openrouter") {
-        http.sendHeader("HTTP-Referer", "http://localhost"); // 替换为您的实际站点 URL
+        http.sendHeader("HTTP-Referer", "http://localhost"); // 可替换为你的实际站点URL
     }
-    http.write((const uint8_t*)requestBody.c_str(), requestBody.length()); // 写入请求体
-    http.endRequest(); // 结束请求
+    http.write((const uint8_t*)requestBody.c_str(), requestBody.length());
+    http.endRequest();
 
-    int statusCode = http.responseStatusCode(); // 获取响应状态码
-    String response = http.responseBody(); // 获取响应体
+    int statusCode = http.responseStatusCode(); // 获取HTTP响应状态码
+    String response = http.responseBody();       // 获取响应体
 
     // 处理响应
     if (statusCode == 200) {
-        JsonDocument responseDoc; // 创建响应 JSON 文档
-        deserializeJson(responseDoc, response); // 反序列化响应体
-        return responseDoc["choices"][0]["message"]["content"].as<String>(); // 返回 LLM 生成的内容
+        JsonDocument responseDoc;
+        deserializeJson(responseDoc, response);
+        // 提取并返回LLM生成的核心内容
+        return responseDoc["choices"][0]["message"]["content"].as<String>();
     } else {
-        return "Error: API request failed with status code " + String(statusCode) + " " + response; // 返回错误信息
+        // 如果请求失败，返回包含状态码和错误信息的字符串
+        return "Error: API request failed with status code " + String(statusCode) + " " + response;
     }
 }
 
 
 // 根据模式和工具生成系统提示
-String LLMManager::generateSystemPrompt(LLMMode mode, const JsonArray& authorizedTools) {
+String LLMManager::generateSystemPrompt(LLMMode mode) {
     String prompt = "";
     // 聊天模式下的系统提示
     if (mode == CHAT_MODE) {
         prompt += "You are a helpful and friendly AI assistant. Respond concisely and accurately to user queries.";
     } 
-    // 高级模式下的系统提示 (涉及工具使用)
+    // 高级模式下的系统提示 (用于Shell工具调用)
     else if (mode == ADVANCED_MODE) {
         prompt += "You are an intelligent assistant that helps users by executing shell commands on their computer. ";
         prompt += "Based on the user's request and the output of previous commands, decide the next step. ";
-        prompt += "You can either execute another shell command or provide a natural language response. ";
-        prompt += "Your response MUST be a JSON object representing a tool call. ";
-        prompt += "If you need to run a command, use the 'execute_shell_command' tool. ";
-        prompt += "If you need to respond to the user, wrap your text in a standard string. ";
+        prompt += "Your response MUST be a JSON object representing a tool call to 'sendtoshell'. ";
+        prompt += "The 'sendtoshell' tool can either execute a command or provide a natural language response. ";
         prompt += "Here are the tools you are authorized to use:\n";
-        prompt += getToolDescriptions(authorizedTools); // 获取工具描述
+        prompt += getToolDescriptions(); // 获取工具描述
         prompt += "\nExample of executing a shell command:\n";
         prompt += "```json\n";
         prompt += "{\n";
         prompt += "  \"tool_calls\": [\n";
         prompt += "    {\n";
-        prompt += "      \"name\": \"execute_shell_command\",\n";
+        prompt += "      \"name\": \"sendtoshell\",\n";
         prompt += "      \"args\": {\n";
-        prompt += "        \"command\": \"ls -l\"\n";
+        prompt += "        \"type\": \"command\",\n";
+        prompt += "        \"value\": \"ls -l\"\n";
+        prompt += "      }\n";
+        prompt += "    }\n";
+        prompt += "  ]\n";
+        prompt += "}\n";
+        prompt += "```\n";
+        prompt += "\nExample of providing a natural language response:\n";
+        prompt += "```json\n";
+        prompt += "{\n";
+        prompt += "  \"tool_calls\": [\n";
+        prompt += "    {\n";
+        prompt += "      \"name\": \"sendtoshell\",\n";
+        prompt += "      \"args\": {\n";
+        prompt += "        \"type\": \"text\",\n";
+        prompt += "        \"value\": \"Hello! How can I help you today?\"\n";
         prompt += "      }\n";
         prompt += "    }\n";
         prompt += "  ]\n";
@@ -312,13 +253,13 @@ String LLMManager::generateSystemPrompt(LLMMode mode, const JsonArray& authorize
     return prompt;
 }
 
-// 获取工具描述
-String LLMManager::getToolDescriptions(const JsonArray& authorizedTools) {
+// 获取工具的描述字符串
+String LLMManager::getToolDescriptions() {
     String descriptions = "";
-    // 添加 Shell 执行工具的描述
-    descriptions += "- **execute_shell_command**: Executes a command on the host computer's shell and returns the output. Parameters: `{\"command\": \"command_to_execute\"}`\n";
+    // 添加 Shell 执行和 AI 回复的统一工具描述
+    descriptions += "- **sendtoshell**: A unified tool to send either a shell command for execution or a natural language response to the host computer's terminal. Parameters: `{\"type\": \"command\" | \"text\", \"value\": \"command_or_text_content\"}`\n";
     
-    // 保留其他工具的描述
+    // 保留其他可能工具的描述
     descriptions += "- **usb_hid_keyboard_type**: Types a given string on the connected computer via USB HID. Parameters: `{\"text\": \"string_to_type\"}`\n";
     descriptions += "- **usb_hid_mouse_click**: Clicks the mouse at the current cursor position. Parameters: `{\"button\": \"left\"}` (or \"right\", \"middle\")\n";
     descriptions += "- **usb_hid_mouse_move**: Moves the mouse cursor by a specified offset. Parameters: `{\"x\": 10, \"y\": 20}`\n";
@@ -331,24 +272,74 @@ String LLMManager::getToolDescriptions(const JsonArray& authorizedTools) {
     return descriptions;
 }
 
-// LLM 任务函数
+// 处理 LLM 的原始响应，解析工具调用或自然语言回复。
+void LLMManager::handleLLMRawResponse(const String& requestId, const String& llmRawResponse) {
+    JsonDocument responseDoc;
+    DeserializationError error = deserializeJson(responseDoc, llmRawResponse);
+
+    if (error) {
+        Serial1.print(F("handleLLMRawResponse deserializeJson() failed: "));
+        Serial1.println(error.f_str());
+        _usbShellManager->sendAiResponseToHost(requestId, "Error: Invalid JSON response from LLM: " + llmRawResponse);
+        return;
+    }
+
+    // 检查响应是否为工具调用
+    if (responseDoc["tool_calls"].is<JsonArray>()) {
+        JsonArray toolCalls = responseDoc["tool_calls"].as<JsonArray>();
+        if (toolCalls.size() > 0) {
+            JsonObject toolCall = toolCalls[0].as<JsonObject>();
+            String toolName = toolCall["name"] | "";
+
+            if (toolName == "sendtoshell") { // Our unified tool
+                String outputType = toolCall["args"]["type"] | "";
+                String value = toolCall["args"]["value"] | "";
+
+                if (outputType == "command") {
+                    Serial1.printf("LLM requested shell command: %s\n", value.c_str());
+                    _usbShellManager->sendShellCommandToHost(requestId, value);
+                } else if (outputType == "text") {
+                    Serial1.printf("LLM requested AI response: %s\n", value.c_str());
+                    _usbShellManager->sendAiResponseToHost(requestId, value);
+                } else {
+                    Serial1.printf("LLM called sendtoshell with unknown output_type: %s\n", outputType.c_str());
+                    _usbShellManager->sendAiResponseToHost(requestId, "Error: LLM called sendtoshell with unknown output type.");
+                }
+            } else {
+                Serial1.printf("LLM called unknown tool: %s\n", toolName.c_str());
+                _usbShellManager->sendAiResponseToHost(requestId, "Error: LLM called an unknown tool: " + toolName);
+            }
+        } else {
+            // No tool calls, treat as natural language response
+            String content = responseDoc["choices"][0]["message"]["content"] | llmRawResponse;
+            Serial1.printf("LLM natural language response (no tool calls): %s\n", content.c_str());
+            _usbShellManager->sendAiResponseToHost(requestId, content);
+        }
+    } else {
+        // No tool_calls field, treat as natural language response
+        String content = responseDoc["choices"][0]["message"]["content"] | llmRawResponse;
+        Serial1.printf("LLM natural language response (no tool_calls field): %s\n", content.c_str());
+        _usbShellManager->sendAiResponseToHost(requestId, content);
+    }
+}
+
+// LLM 后台任务函数
 void LLMManager::llmTask(void* pvParameters) {
     LLMManager* llmManager = static_cast<LLMManager*>(pvParameters); // 将参数转换为 LLMManager 指针
-    LLMRequest request; // LLM 请求结构体
-    LLMResponse response; // LLM 响应结构体
+    LLMRequest request;   // 用于存储接收到的请求
+    String llmRawResponse; // 用于存储生成的原始响应
 
-    for (;;) { // 无限循环
-        // 从请求队列接收请求，如果队列为空则阻塞
+    for (;;) { // 无限循环，持续处理请求
+        // 从请求队列中接收一个请求，如果队列为空，此调用会阻塞任务，直到有新请求到来
         if (xQueueReceive(llmManager->llmRequestQueue, &request, portMAX_DELAY) == pdPASS) {
-            Serial.printf("LLMTask: Received request for prompt: %s\n", request.prompt.c_str()); // 打印接收到的提示
-            // 生成响应
-            response.response = llmManager->generateResponse(request.prompt, request.mode, request.authorizedToolsJson);
-            Serial.printf("LLMTask: Generated response: %s\n", response.response.c_str()); // 打印生成的响应
+            Serial1.printf("LLMTask: Received request for prompt: %s (requestId: %s)\n", request.prompt.c_str(), request.requestId.c_str());
+            
+            // 调用核心函数生成响应
+            llmRawResponse = llmManager->generateResponse(request.requestId, request.prompt, request.mode);
+            Serial1.printf("LLMTask: Generated raw response: %s\n", llmRawResponse.c_str());
 
-            // 将响应发送到响应队列
-            if (xQueueSend(llmManager->llmResponseQueue, &response, portMAX_DELAY) != pdPASS) {
-                Serial.println("LLMTask: Failed to send response to queue."); // 打印发送失败信息
-            }
+            // 处理LLM的原始响应，解析工具调用或自然语言回复
+            llmManager->handleLLMRawResponse(request.requestId, llmRawResponse);
         }
     }
 }

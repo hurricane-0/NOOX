@@ -14,15 +14,15 @@ WebManager::WebManager(LLMManager& llm, TaskManager& task, AppWiFiManager& wifi,
 // Start web services
 void WebManager::begin() {
     if(!LittleFS.begin(true)){
-        Serial.println("An Error has occurred while mounting LittleFS");
+        Serial1.println("An Error has occurred while mounting LittleFS");
         return;
     }
-    Serial.println("LittleFS mounted successfully.");
+    Serial1.println("LittleFS mounted successfully.");
     setupRoutes();
     ws.onEvent(std::bind(&WebManager::onWebSocketEvent, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5, std::placeholders::_6));
     server.addHandler(&ws);
     server.begin();
-    Serial.println("Web server started on port 80.");
+    Serial1.println("Web server started on port 80.");
 }
 
 // WebSocket cleanup and LLM response handling
@@ -69,14 +69,14 @@ void WebManager::broadcast(const String& message) {
 void WebManager::setLLMMode(LLMMode mode) {
     currentLLMMode = mode;
     taskManager.setLLMMode((mode == CHAT_MODE) ? "Chat" : "Advanced");
-    Serial.printf("LLM Mode set to %s\n", (mode == CHAT_MODE ? "CHAT_MODE" : "ADVANCED_MODE"));
+    Serial1.printf("LLM Mode set to %s\n", (mode == CHAT_MODE ? "CHAT_MODE" : "ADVANCED_MODE"));
 }
 
 void WebManager::onWebSocketEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventType type, void * arg, uint8_t *data, size_t len) {
     if (type == WS_EVT_CONNECT) {
-        Serial.printf("WebSocket client #%u connected from %s\n", client->id(), client->remoteIP().toString().c_str());
+        Serial1.printf("WebSocket client #%u connected from %s\n", client->id(), client->remoteIP().toString().c_str());
     } else if (type == WS_EVT_DISCONNECT) {
-        Serial.printf("WebSocket client #%u disconnected\n", client->id());
+        Serial1.printf("WebSocket client #%u disconnected\n", client->id());
     } else if (type == WS_EVT_DATA) {
         handleWebSocketData(client, arg, data, len);
     }
@@ -98,7 +98,7 @@ void WebManager::handleWebSocketData(AsyncWebSocketClient * client, void *arg, u
             client->text("{\"type\":\"llm_mode_set\", \"status\":\"success\", \"mode\":\"" + modeStr + "\"}");
         } else if (type == "chat_message") {
             String payload = doc["payload"].as<String>();
-            LLMRequest request = { payload, currentLLMMode };
+            LLMRequest request = { "", payload, currentLLMMode }; // Corrected initialization order and added empty requestId
             if (xQueueSend(llmManager.llmRequestQueue, &request, 0) != pdPASS) {
                 client->text("{\"type\":\"chat_message\", \"sender\":\"bot\", \"text\":\"Error: LLM queue full.\"}");
             } else {
@@ -147,15 +147,16 @@ void WebManager::setupRoutes() {
 
     // API for WiFi actions
     server.on("/api/wifi/connect", HTTP_POST, [this](AsyncWebServerRequest *request){
-        if (request->hasParam("ssid", true)) {
+        if (request->hasParam("ssid", true) && request->hasParam("password", true)) {
             String ssid = request->getParam("ssid", true)->value();
-            if (wifiManager.connectToWiFi(ssid)) {
+            String password = request->getParam("password", true)->value();
+            if (wifiManager.connectToWiFi(ssid, password)) { // Pass both ssid and password
                 request->send(200, "application/json", "{\"status\":\"success\", \"message\":\"Connecting to " + ssid + ".\"}");
             } else {
                 request->send(400, "application/json", "{\"status\":\"error\", \"message\":\"Failed to connect to " + ssid + ".\"}");
             }
         } else {
-            request->send(400, "application/json", "{\"status\":\"error\", \"message\":\"Missing ssid parameter.\"}");
+            request->send(400, "application/json", "{\"status\":\"error\", \"message\":\"Missing ssid or password parameter.\"}");
         }
     });
 

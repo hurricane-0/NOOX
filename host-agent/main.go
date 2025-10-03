@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -10,43 +11,61 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
+
+	"github.com/google/uuid"
 
 	"go.bug.st/serial"
-	serial_enumerator "go.bug.st/serial/enumerator" // Alias for enumerator
+	serial_enumerator "go.bug.st/serial/enumerator"
 )
 
 // JSON message structures for communication with ESP32
 // New struct for shell output payload
 type ShellOutputPayload struct {
-	Command string `json:"command,omitempty"`
-	Stdout  string `json:"stdout,omitempty"`
-	Stderr  string `json:"stderr,omitempty"`
+	Command  string `json:"command,omitempty"`
+	Stdout   string `json:"stdout,omitempty"`
+	Stderr   string `json:"stderr,omitempty"`
+	Status   string `json:"status,omitempty"`
+	ExitCode int    `json:"exitCode,omitempty"`
 }
 
 // Modified HostMessage struct for flexible payloads
 type HostMessage struct {
-	Type    string      `json:"type"`
-	Payload interface{} `json:"payload,omitempty"` // Use interface{} for flexible payload
+	RequestId string      `json:"requestId"`
+	Type      string      `json:"type"`
+	Payload   interface{} `json:"payload,omitempty"`
+}
+
+// New struct for connectToWifi payload
+type ConnectToWifiPayload struct {
+	SSID     string `json:"ssid"`
+	Password string `json:"password"`
 }
 
 type ESP32Response struct {
-	Type        string      `json:"type"`
-	AIResponse  string      `json:"ai_response,omitempty"`
-	ShellCommand string      `json:"shell_command,omitempty"`
-	Content     string      `json:"content,omitempty"` // For error messages (e.g., "Invalid JSON")
-	Payload     interface{} `json:"payload,omitempty"` // For generic error payloads (e.g., "Unknown message type")
+	RequestId string      `json:"requestId"`
+	Type      string      `json:"type"`
+	Payload   interface{} `json:"payload,omitempty"`
+	Status    string      `json:"status,omitempty"`
+	Content   string      `json:"content,omitempty"`
 }
 
 var (
 	serialPort serial.Port
 	portName   string
-	mu         sync.Mutex // Mutex for serial port access
+	mu         sync.Mutex
+	wifiStatus string
 )
 
-func main() {
-	log.Println("AIHi Host Agent starting...")
+func init() {
+	flag.StringVar(&wifiStatus, "wifi-status", "unknown", "Initial WiFi status from ESP32 (connected/disconnected/unknown)")
+}
 
-	// 1. Discover and connect to ESP32 serial port
+func main() {
+	flag.Parse()
+	log.Println("AIHi Host Agent starting...")
+	log.Printf("Initial WiFi Status from ESP32: %s", wifiStatus)
+
 	err := connectToESP32()
 	if err != nil {
 		log.Fatalf("Failed to connect to ESP32: %v", err)
@@ -54,27 +73,67 @@ func main() {
 	defer serialPort.Close()
 	log.Printf("Connected to ESP32 on %s", portName)
 
-	// Goroutine to read from ESP32 serial port
 	go readFromESP32()
 
-	// Goroutine to read from stdin and send to ESP32
+	performInitialDeviceSetup()
+
 	go readFromStdin()
 
-	// Keep main goroutine alive
 	select {}
 }
 
+func generateUUID() string {
+	return uuid.New().String()
+}
+
+func performInitialDeviceSetup() {
+	log.Println("Performing initial device setup...")
+
+	linkTestReq := HostMessage{
+		RequestId: generateUUID(),
+		Type:      "linkTest",
+		Payload:   "ping",
+	}
+	sendToESP32(linkTestReq)
+
+	time.Sleep(1 * time.Second)
+
+	if wifiStatus == "disconnected" {
+		log.Println("ESP32 reported WiFi disconnected. Attempting to get host WiFi info and send to ESP32.")
+		ssid, password, err := getWifiInfoFromHost()
+		if err != nil {
+			log.Printf("Failed to get host WiFi info: %v. Skipping WiFi connection attempt.", err)
+			return
+		}
+
+		log.Printf("Sending connectToWifi to ESP32 for SSID: %s", ssid)
+		connectWifiReq := HostMessage{
+			RequestId: generateUUID(),
+			Type:      "connectToWifi",
+			Payload: ConnectToWifiPayload{
+				SSID:     ssid,
+				Password: password,
+			},
+		}
+		sendToESP32(connectWifiReq)
+	} else {
+		log.Printf("ESP32 reported WiFi status: %s. No host WiFi connection needed.", wifiStatus)
+	}
+}
+
+func getWifiInfoFromHost() (ssid, password string, err error) {
+	log.Println("WARNING: getWifiInfoFromHost is a placeholder. Actual implementation needed.")
+	return "MyHomeNetwork", "MyWiFiPassword", nil
+}
+
 func connectToESP32() error {
-	ports, err := serial_enumerator.GetDetailedPortsList() // 修正方法名
+	ports, err := serial_enumerator.GetDetailedPortsList()
 	if err != nil {
 		return fmt.Errorf("failed to enumerate serial ports: %w", err)
 	}
 
 	for _, p := range ports {
-		// Heuristic to identify ESP32-S3. This might need adjustment.
-		// Look for common ESP32-S3 USB CDC descriptions or vendor/product IDs.
-		// Example: "USB Serial Device", "ESP32-S3 CDC"
-		if strings.Contains(p.Product, "ESP32-S3") || strings.Contains(p.Product, "USB Serial Device") || strings.Contains(p.VID, "303A") { // Common ESP32 VID
+		if strings.Contains(p.Product, "ESP32-S3") || strings.Contains(p.Product, "USB Serial Device") || strings.Contains(p.VID, "303A") {
 			log.Printf("Found potential ESP32-S3: %s (%s)", p.Name, p.Product)
 			portName = p.Name
 			break
@@ -118,7 +177,7 @@ func readFromESP32() {
 		err = json.Unmarshal([]byte(line), &espResponse)
 		if err != nil {
 			log.Printf("Error unmarshalling ESP32 response: %v, Raw: %s", err, line)
-			fmt.Printf("[AIHi Device] Raw: %s\n", line) // Print raw if unmarshalling fails
+			fmt.Printf("[AIHi Device] Raw: %s\n", line)
 			continue
 		}
 
@@ -128,31 +187,53 @@ func readFromESP32() {
 
 func handleESP32Response(resp ESP32Response) {
 	switch resp.Type {
-	case "combined_response":
-		if resp.AIResponse != "" {
-			fmt.Printf("[AIHi AI] %s\n", resp.AIResponse)
+	case "shellCommand":
+		// Payload is the command string
+		command, ok := resp.Payload.(string)
+		if !ok {
+			log.Printf("Error: shellCommand payload is not a string: %v", resp.Payload)
+			return
 		}
-		if resp.ShellCommand != "" {
-			fmt.Printf("[AIHi Shell] Executing: %s\n", resp.ShellCommand)
-			executeLocalShellCommand(resp.ShellCommand)
+		fmt.Printf("[AIHi Shell] Executing: %s\n", command)
+		executeLocalShellCommand(command)
+	case "aiResponse":
+		// Payload is the AI response string
+		aiResponse, ok := resp.Payload.(string)
+		if !ok {
+			log.Printf("Error: aiResponse payload is not a string: %v", resp.Payload)
+			return
 		}
+		fmt.Printf("[AIHi AI] %s\n", aiResponse)
+	case "linkTestResult":
+		// Payload is the linkTest result string (e.g., "pong")
+		linkTestResult, ok := resp.Payload.(string)
+		if !ok {
+			log.Printf("Error: linkTestResult payload is not a string: %v", resp.Payload)
+			return
+		}
+		fmt.Printf("[AIHi Device] Link Test Result (RequestId: %s): %s - %s\n", resp.RequestId, resp.Status, linkTestResult)
+	case "wifiConnectStatus":
+		// Payload is the WiFi connection status message
+		wifiStatusMsg, ok := resp.Payload.(string)
+		if !ok {
+			log.Printf("Error: wifiConnectStatus payload is not a string: %v", resp.Payload)
+			return
+		}
+		fmt.Printf("[AIHi Device] WiFi Connect Status (RequestId: %s): %s - %s\n", resp.RequestId, resp.Status, wifiStatusMsg)
 	case "error":
+		// Generic error from ESP32
+		errMsg := ""
 		if resp.Content != "" {
-			fmt.Printf("[AIHi Device Error] %s\n", resp.Content)
+			errMsg = resp.Content
 		} else if resp.Payload != nil {
-			// Attempt to print the payload if Content is empty
-			fmt.Printf("[AIHi Device Error] Payload: %v\n", resp.Payload)
+			errMsg = fmt.Sprintf("%v", resp.Payload)
 		} else {
-			fmt.Printf("[AIHi Device Error] Unknown error\n")
+			errMsg = "Unknown error from ESP32"
 		}
+		fmt.Printf("[AIHi Device Error] (RequestId: %s) %s\n", resp.RequestId, errMsg)
 	default:
-		if resp.Content != "" {
-			fmt.Printf("[AIHi Device] %s\n", resp.Content) // Generic content
-		} else if resp.Payload != nil {
-			fmt.Printf("[AIHi Device] Payload: %v\n", resp.Payload) // Generic payload
-		} else {
-			fmt.Printf("[AIHi Device] Unknown response\n")
-		}
+		fmt.Printf("[AIHi Device] Unknown response type: %s (RequestId: %s, Status: %s, Content: %s, Payload: %v)\n",
+			resp.Type, resp.RequestId, resp.Status, resp.Content, resp.Payload)
 	}
 }
 
@@ -165,8 +246,9 @@ func readFromStdin() {
 		}
 
 		msg := HostMessage{
-			Type:    "userInput", // Changed from "user_input" to match C++
-			Payload: input,       // Content is now directly the payload
+			RequestId: generateUUID(),
+			Type:      "userInput",
+			Payload:   input,
 		}
 		sendToESP32(msg)
 	}
@@ -178,7 +260,6 @@ func readFromStdin() {
 func executeLocalShellCommand(command string) {
 	var cmd *exec.Cmd
 
-	// Determine OS and prepare command
 	if os.Getenv("OS") == "Windows_NT" {
 		cmd = exec.Command("cmd", "/C", command)
 	} else {
@@ -189,31 +270,32 @@ func executeLocalShellCommand(command string) {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	err := cmd.Run() // Use Run() to wait for command to complete
-	
-	shellPayload := ShellOutputPayload{
-		Command: command,
-		Stdout:  stdout.String(),
-		Stderr:  stderr.String(),
+	err := cmd.Run()
+
+	status := "success"
+	exitCode := 0
+	if err != nil {
+		status = "error"
+		if exitError, ok := err.(*exec.ExitError); ok {
+			exitCode = exitError.ExitCode()
+		} else {
+			exitCode = 1
+		}
+		log.Printf("Error executing command '%s': %v", command, err)
 	}
 
-	if err != nil {
-		log.Printf("Error executing command '%s': %v", command, err)
-		if shellPayload.Stderr == "" { // If stderr is empty, capture the Go error
-			shellPayload.Stderr = err.Error()
-		}
+	shellPayload := ShellOutputPayload{
+		Command:  command,
+		Stdout:   stdout.String(),
+		Stderr:   stderr.String(),
+		Status:   status,
+		ExitCode: exitCode,
 	}
 
 	hostMsg := HostMessage{
-		Type:    "shellResult", // Changed from "shell_output" to match C++
-		Payload: shellPayload,  // Shell output is now the payload
-	}
-
-	if err != nil {
-		log.Printf("Error executing command '%s': %v", command, err)
-		if hostMsg.Stderr == "" { // If stderr is empty, capture the Go error
-			hostMsg.Stderr = err.Error()
-		}
+		RequestId: generateUUID(),
+		Type:      "shellCommandResult",
+		Payload:   shellPayload,
 	}
 
 	sendToESP32(hostMsg)
@@ -229,7 +311,7 @@ func sendToESP32(msg HostMessage) {
 	mu.Lock()
 	defer mu.Unlock()
 
-	_, err = serialPort.Write(append(jsonData, '\n')) // Append newline for ESP32 ReadString
+	_, err = serialPort.Write(append(jsonData, '\n'))
 	if err != nil {
 		log.Printf("Error writing to serial port: %v", err)
 	}

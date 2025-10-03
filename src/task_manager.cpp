@@ -11,7 +11,7 @@ TaskManager::TaskManager(HIDManager& hid, AppWiFiManager& wifi, HardwareManager&
 
 // LLM 工具调用的新方法
 String TaskManager::executeTool(const String& toolName, const JsonObject& params) {
-    Serial.printf("Executing tool: %s\n", toolName.c_str());
+    Serial1.printf("Executing tool: %s\n", toolName.c_str());
     currentTaskStatus = "Executing: " + toolName; // Update task status for UI
 
     if (toolName.startsWith("usb_hid_")) {

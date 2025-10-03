@@ -2,27 +2,27 @@
 #define APP_WIFI_MANAGER_H
 
 #include <WiFi.h>
-#include "llm_manager.h"
+// #include "llm_manager.h" // Removed direct dependency
 #include "config_manager.h"
 #include <ArduinoJson.h>
 
 class AppWiFiManager {
 public:
-    AppWiFiManager(LLMManager& llm, ConfigManager& config);
+    AppWiFiManager(ConfigManager& config); // Updated constructor
     void begin();
     void loop();
     String getIPAddress();
     String getWiFiStatus();
 
     // New public methods for WiFi management
-    bool connectToWiFi(const String& ssid);
+    bool connectToWiFi(const String& ssid, const String& password); // Updated to accept password
     void disconnect();
-    bool addWiFi(const String& ssid, const String& password);
+    bool addWiFi(const String& ssid, const String& password); // Updated to accept password
     bool deleteWiFi(const String& ssid);
     JsonArray getSavedSSIDs();
 
 private:
-    LLMManager& llmManager;
+    // LLMManager& llmManager; // Removed
     ConfigManager& configManager;
     
     enum WiFiConnectionState {
