@@ -13,6 +13,7 @@ public:
     void loop();
     String getIPAddress();
     String getWiFiStatus();
+    String getSSID(); // Added to get current connected SSID
 
     // New public methods for WiFi management
     bool connectToWiFi(const String& ssid, const String& password); // Updated to accept password

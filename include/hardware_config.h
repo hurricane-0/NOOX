@@ -22,8 +22,8 @@
 
 // --- Button Inputs (Active High) ---
 // Note: Configure with internal pull-down resistors.
-#define BUTTON_1_PIN 21 // OK
-#define BUTTON_2_PIN 47 // Up
+#define BUTTON_1_PIN 47 // OK
+#define BUTTON_2_PIN 21 // Up
 #define BUTTON_3_PIN 38 // Down
 
 // --- LED Outputs (Active High) ---

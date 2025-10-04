@@ -101,6 +101,8 @@ public:
      */
     void processShellOutput(const String& requestId, const String& cmd, const String& output, const String& error, const String& status, int exitCode);
 
+    String getCurrentModelName(); // Added to get current LLM model name
+
     QueueHandle_t llmRequestQueue;  ///< LLM 请求队列的句柄。
     QueueHandle_t llmResponseQueue; ///< LLM 响应队列的句柄。
 

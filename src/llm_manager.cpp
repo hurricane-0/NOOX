@@ -100,6 +100,10 @@ void LLMManager::processUserInput(const String& requestId, const String& userInp
     // 响应将在 llmTask 中处理
 }
 
+String LLMManager::getCurrentModelName() {
+    return currentModel;
+}
+
 // 处理来自主机的shell命令执行结果
 void LLMManager::processShellOutput(const String& requestId, const String& cmd, const String& output, const String& error, const String& status, int exitCode) {
     // 将上一个命令及其输出作为上下文，构建新的提示
@@ -259,7 +263,6 @@ String LLMManager::getToolDescriptions() {
     // 添加 Shell 执行和 AI 回复的统一工具描述
     descriptions += "- **sendtoshell**: A unified tool to send either a shell command for execution or a natural language response to the host computer's terminal. Parameters: `{\"type\": \"command\" | \"text\", \"value\": \"command_or_text_content\"}`\n";
     
-    // 保留其他可能工具的描述
     descriptions += "- **usb_hid_keyboard_type**: Types a given string on the connected computer via USB HID. Parameters: `{\"text\": \"string_to_type\"}`\n";
     descriptions += "- **usb_hid_mouse_click**: Clicks the mouse at the current cursor position. Parameters: `{\"button\": \"left\"}` (or \"right\", \"middle\")\n";
     descriptions += "- **usb_hid_mouse_move**: Moves the mouse cursor by a specified offset. Parameters: `{\"x\": 10, \"y\": 20}`\n";

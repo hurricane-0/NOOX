@@ -31,6 +31,13 @@ String AppWiFiManager::getWiFiStatus() {
     }
 }
 
+String AppWiFiManager::getSSID() {
+    if (_connectionState == CONNECTED) {
+        return WiFi.SSID();
+    }
+    return "N/A";
+}
+
 void AppWiFiManager::connectToLastSSID() {
     JsonDocument& config = configManager.getConfig();
     String lastSSID = config["last_used"]["wifi_ssid"].as<String>();

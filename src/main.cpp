@@ -25,7 +25,9 @@ UsbShellManager* usbShellManagerPtr;
 WebManager* webManagerPtr; // Declare WebManager pointer
 
 TaskManager taskManager(hidManager, wifiManager, hardwareManager);
-UIManager uiManager(hardwareManager, wifiManager, taskManager);
+// UIManager uiManager(hardwareManager, wifiManager, taskManager); // Old constructor call
+// Declare UIManager after llmManagerPtr is instantiated
+UIManager* uiManagerPtr;
 
 void setup() {
     // Initialize UART1 for serial output
@@ -49,7 +51,11 @@ void setup() {
     
     llmManagerPtr->begin();
     llmManagerPtr->startLLMTask();
-    uiManager.begin();
+    
+    // Instantiate UIManager after LLMManager is ready
+    uiManagerPtr = new UIManager(hardwareManager, wifiManager, taskManager, *llmManagerPtr);
+    uiManagerPtr->begin();
+
     hidManager.begin();
     // Instantiate WebManager after LLMManager and UsbShellManager are initialized
     webManagerPtr = new WebManager(*llmManagerPtr, taskManager, wifiManager, configManager);
@@ -93,7 +99,7 @@ void setup() {
 void loop() {
     hardwareManager.update();
     wifiManager.loop();
-    uiManager.update();
+    uiManagerPtr->update(); // Call update on the pointer
     webManagerPtr->loop(); // Call WebManager loop
     usbShellManagerPtr->loop(); // Call UsbShellManager loop
 }

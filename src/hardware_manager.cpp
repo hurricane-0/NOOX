@@ -1,7 +1,11 @@
 #include "hardware_manager.h"
 #include <Wire.h>
 
-HardwareManager::HardwareManager() : u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE) {}
+HardwareManager::HardwareManager() 
+    : u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE),
+      button1Pin(BUTTON_1_PIN),
+      button2Pin(BUTTON_2_PIN),
+      button3Pin(BUTTON_3_PIN) {}
 
 void HardwareManager::begin() {
     // Initialize I2C for OLED
@@ -9,9 +13,9 @@ void HardwareManager::begin() {
     u8g2.begin();
 
     // Initialize Buttons
-    pinMode(BUTTON_1_PIN, INPUT_PULLDOWN);
-    pinMode(BUTTON_2_PIN, INPUT_PULLDOWN);
-    pinMode(BUTTON_3_PIN, INPUT_PULLDOWN);
+    pinMode(button1Pin, INPUT_PULLDOWN);
+    pinMode(button2Pin, INPUT_PULLDOWN);
+    pinMode(button3Pin, INPUT_PULLDOWN);
 
     // Initialize LEDs
     pinMode(LED_1_PIN, OUTPUT);
@@ -34,9 +38,6 @@ U8G2_SSD1315_128X64_NONAME_F_HW_I2C& HardwareManager::getDisplay() {
     return u8g2;
 }
 
-bool HardwareManager::isButtonPressed(int buttonPin) {
-    return digitalRead(buttonPin) == HIGH;
-}
 
 void HardwareManager::setLedState(int ledPin, bool state) {
     digitalWrite(ledPin, state);
@@ -53,4 +54,16 @@ void HardwareManager::setReservedGpio1State(bool state) {
 
 void HardwareManager::setReservedGpio2State(bool state) {
     digitalWrite(RESERVED_GPIO_2, state);
+}
+
+bool HardwareManager::getButtonA() {
+    return digitalRead(button1Pin) == HIGH;
+}
+
+bool HardwareManager::getButtonB() {
+    return digitalRead(button2Pin) == HIGH;
+}
+
+bool HardwareManager::getButtonC() {
+    return digitalRead(button3Pin) == HIGH;
 }
