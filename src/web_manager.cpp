@@ -14,20 +14,39 @@ WebManager::WebManager(LLMManager& llm, TaskManager& task, AppWiFiManager& wifi,
 // Start web services
 void WebManager::begin() {
     if(!LittleFS.begin(true)){
-        Serial1.println("An Error has occurred while mounting LittleFS");
+        Serial.println("An Error has occurred while mounting LittleFS");
         return;
     }
-    Serial1.println("LittleFS mounted successfully.");
+    Serial.println("LittleFS mounted successfully.");
     setupRoutes();
     ws.onEvent(std::bind(&WebManager::onWebSocketEvent, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5, std::placeholders::_6));
     server.addHandler(&ws);
     server.begin();
-    Serial1.println("Web server started on port 80.");
+    Serial.println("Web server started on port 80.");
 }
 
 // WebSocket cleanup and LLM response handling
 void WebManager::loop() {
     ws.cleanupClients();
+
+    // Handle pending configuration updates
+    if (configUpdatePending) {
+        Serial.println("Processing pending configuration update...");
+        JsonDocument& doc = configManager.getConfig();
+        doc.clear();
+        doc.set(pendingConfigDoc); // Apply the pending config
+
+        if (configManager.saveConfig()) {
+            Serial.println("Configuration saved successfully.");
+            broadcast("{\"type\":\"config_update_status\", \"status\":\"success\", \"message\":\"Configuration saved and applied.\"}");
+            llmManager.begin(); // Re-initialize managers with new config
+            wifiManager.begin(); // For WiFi, we might want to connect to the new "last_used" one
+        } else {
+            Serial.println("Failed to save configuration.");
+            broadcast("{\"type\":\"config_update_status\", \"status\":\"error\", \"message\":\"Failed to save configuration.\"}");
+        }
+        configUpdatePending = false; // Reset flag
+    }
 
     LLMResponse response;
     if (xQueueReceive(llmManager.llmResponseQueue, &response, 0) == pdPASS) {
@@ -69,14 +88,14 @@ void WebManager::broadcast(const String& message) {
 void WebManager::setLLMMode(LLMMode mode) {
     currentLLMMode = mode;
     taskManager.setLLMMode((mode == CHAT_MODE) ? "Chat" : "Advanced");
-    Serial1.printf("LLM Mode set to %s\n", (mode == CHAT_MODE ? "CHAT_MODE" : "ADVANCED_MODE"));
+    Serial.printf("LLM Mode set to %s\n", (mode == CHAT_MODE ? "CHAT_MODE" : "ADVANCED_MODE"));
 }
 
 void WebManager::onWebSocketEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventType type, void * arg, uint8_t *data, size_t len) {
     if (type == WS_EVT_CONNECT) {
-        Serial1.printf("WebSocket client #%u connected from %s\n", client->id(), client->remoteIP().toString().c_str());
+        Serial.printf("WebSocket client #%u connected from %s\n", client->id(), client->remoteIP().toString().c_str());
     } else if (type == WS_EVT_DISCONNECT) {
-        Serial1.printf("WebSocket client #%u disconnected\n", client->id());
+        Serial.printf("WebSocket client #%u disconnected\n", client->id());
     } else if (type == WS_EVT_DATA) {
         handleWebSocketData(client, arg, data, len);
     }
@@ -109,15 +128,24 @@ void WebManager::handleWebSocketData(AsyncWebSocketClient * client, void *arg, u
 }
 
 void WebManager::setupRoutes() {
-    // Serve web interface
+    // Serve web interface with Gzip and Caching
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-        request->send(LittleFS, "/index.html", "text/html");
+        AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/index.html.gz", "text/html");
+        response->addHeader("Content-Encoding", "gzip");
+        response->addHeader("Cache-Control", "max-age=86400"); // Cache for 1 day
+        request->send(response);
     });
     server.on("/style.css", HTTP_GET, [](AsyncWebServerRequest *request){
-        request->send(LittleFS, "/style.css", "text/css");
+        AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/style.css.gz", "text/css");
+        response->addHeader("Content-Encoding", "gzip");
+        response->addHeader("Cache-Control", "max-age=86400"); // Cache for 1 day
+        request->send(response);
     });
     server.on("/script.js", HTTP_GET, [](AsyncWebServerRequest *request){
-        request->send(LittleFS, "/script.js", "application/javascript");
+        AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/script.js.gz", "application/javascript");
+        response->addHeader("Content-Encoding", "gzip");
+        response->addHeader("Cache-Control", "max-age=86400"); // Cache for 1 day
+        request->send(response);
     });
 
     // API to get current config
@@ -129,19 +157,11 @@ void WebManager::setupRoutes() {
 
     // API to update config
     AsyncCallbackJsonWebHandler* handler = new AsyncCallbackJsonWebHandler("/api/config", [this](AsyncWebServerRequest *request, JsonVariant &json) {
-        JsonDocument& doc = configManager.getConfig();
-        doc.clear();
-        doc.set(json);
-        
-        if (configManager.saveConfig()) {
-            request->send(200, "application/json", "{\"status\":\"success\", \"message\":\"Configuration saved.\"}");
-            // Re-initialize managers with new config
-            llmManager.begin();
-            // For WiFi, we might want to connect to the new "last_used" one
-            wifiManager.begin();
-        } else {
-            request->send(500, "application/json", "{\"status\":\"error\", \"message\":\"Failed to save configuration.\"}");
-        }
+        // Copy the received JSON to pendingConfigDoc
+        pendingConfigDoc.clear();
+        pendingConfigDoc.set(json);
+        configUpdatePending = true;
+        request->send(200, "application/json", "{\"status\":\"success\", \"message\":\"Configuration update initiated.\"}");
     });
     server.addHandler(handler);
 

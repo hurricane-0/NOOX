@@ -19,8 +19,8 @@ void UsbShellManager::begin() {
     // Initialize USB Composite Device
     USB.begin();
     _cdc.begin(); // Initialize CDC
-    Serial1.begin(115200); // Standard serial for debug output
-    Serial1.println("UsbShellManager initialized. Waiting for USB connection...");
+    Serial.begin(115200); // Standard Serial for debug output
+    Serial.println("UsbShellManager initialized. Waiting for USB connection...");
 }
 
 void UsbShellManager::setLLMManager(LLMManager* llmManager) {
@@ -39,8 +39,8 @@ void UsbShellManager::handleUsbSerialData() {
 
         // Assuming messages are newline-terminated JSON strings
         if (c == '\n') {
-            Serial1.print("Received from host: ");
-            Serial1.println(_inputBuffer);
+            Serial.print("Received from host: ");
+            Serial.println(_inputBuffer);
             processHostMessage(_inputBuffer);
             _inputBuffer = ""; // Clear buffer after processing
         }
@@ -52,8 +52,8 @@ void UsbShellManager::processHostMessage(const String& message) {
     DeserializationError error = deserializeJson(doc, message);
 
     if (error) {
-        Serial1.print(F("deserializeJson() failed: "));
-        Serial1.println(error.f_str());
+        Serial.print(F("deserializeJson() failed: "));
+        Serial.println(error.f_str());
         sendToHost("{\"type\":\"error\",\"content\":\"Invalid JSON\"}");
         return;
     }
@@ -63,21 +63,21 @@ void UsbShellManager::processHostMessage(const String& message) {
 
     if (type == "userInput") {
         String payload = doc["payload"] | "";
-        Serial1.print("User input: ");
-        Serial1.println(payload);
+        Serial.print("User input: ");
+        Serial.println(payload);
         // Forward to LLMManager with requestId
         _llmManager->processUserInput(requestId, payload);
     } else if (type == "linkTest") {
         String payload = doc["payload"] | "";
-        Serial1.print("Received linkTest: ");
-        Serial1.println(payload);
+        Serial.print("Received linkTest: ");
+        Serial.println(payload);
         // Respond with linkTestResult
         sendLinkTestResultToHost(requestId, true, "pong");
     } else if (type == "connectToWifi") {
         String ssid = doc["payload"]["ssid"] | "";
         String password = doc["payload"]["password"] | "";
-        Serial1.print("Received connectToWifi for SSID: ");
-        Serial1.println(ssid);
+        Serial.print("Received connectToWifi for SSID: ");
+        Serial.println(ssid);
         // Forward to WiFiManager
         bool success = _wifiManager->connectToWiFi(ssid, password); // Corrected case to connectToWiFi
         sendWifiConnectStatusToHost(requestId, success, success ? "Connected" : "Failed to connect");
@@ -88,30 +88,30 @@ void UsbShellManager::processHostMessage(const String& message) {
         String status = doc["status"] | "error"; // New status field
         int exitCode = doc["exitCode"] | -1; // New exitCode field
         
-        Serial1.print("Shell output for '");
-        Serial1.print(command);
-        Serial1.print("':\nSTDOUT: ");
-        Serial1.println(shellStdout);
-        Serial1.print("STDERR: ");
-        Serial1.println(shellStderr);
-        Serial1.print("Status: ");
-        Serial1.println(status);
-        Serial1.print("Exit Code: ");
-        Serial1.println(exitCode);
+        Serial.print("Shell output for '");
+        Serial.print(command);
+        Serial.print("':\nSTDOUT: ");
+        Serial.println(shellStdout);
+        Serial.print("STDERR: ");
+        Serial.println(shellStderr);
+        Serial.print("Status: ");
+        Serial.println(status);
+        Serial.print("Exit Code: ");
+        Serial.println(exitCode);
 
         // Forward to LLMManager with context and requestId
         _llmManager->processShellOutput(requestId, command, shellStdout, shellStderr, status, exitCode);
     } else {
-        Serial1.print("Unknown message type: ");
-        Serial1.println(type);
+        Serial.print("Unknown message type: ");
+        Serial.println(type);
         sendToHost(String("{\"type\":\"error\",\"payload\":\"Unknown message type\",\"requestId\":\"") + requestId + String("\"}"));
     }
 }
 
 void UsbShellManager::sendToHost(const String& message) {
     _cdc.println(message);
-    Serial1.print("Sent to host: ");
-    Serial1.println(message);
+    Serial.print("Sent to host: ");
+    Serial.println(message);
 }
 
 void UsbShellManager::sendShellCommandToHost(const String& requestId, const String& command) {
@@ -157,7 +157,7 @@ void UsbShellManager::sendWifiConnectStatusToHost(const String& requestId, bool 
 }
 
 void UsbShellManager::simulateKeyboardLaunchAgent(const String& wifiStatus) {
-    Serial1.println("Simulating keyboard to launch agent...");
+    Serial.println("Simulating keyboard to launch agent...");
     Keyboard.begin();
     delay(1000); // Give host time to recognize HID device
 
@@ -176,5 +176,5 @@ void UsbShellManager::simulateKeyboardLaunchAgent(const String& wifiStatus) {
     Keyboard.releaseAll();
     delay(500);
     Keyboard.end();
-    Serial1.println("Keyboard simulation complete.");
+    Serial.println("Keyboard simulation complete.");
 }

@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include "esp32-hal-psram.h" // For PSRAM initialization
 #include "hardware_manager.h"
 #include "wifi_manager.h"
 #include "ui_manager.h"
@@ -30,13 +31,13 @@ TaskManager taskManager(hidManager, wifiManager, hardwareManager);
 UIManager* uiManagerPtr;
 
 void setup() {
-    // Initialize UART1 for serial output
-    Serial1.begin(115200, SERIAL_8N1, UART1_RX_PIN, UART1_TX_PIN);
+    // Initialize UART1 for Serial output
+    Serial.begin(115200);
     delay(500);
-    Serial1.println("Setup starting...");
-
-    hardwareManager.begin();
+    Serial.println("Serial setup");
+    Serial.println("Setup starting...");
     
+    hardwareManager.begin();
     configManager.begin();
     configManager.loadConfig();
 
@@ -63,10 +64,10 @@ void setup() {
 
     // Initialize LittleFS for MSD
     if (!LittleFS.begin()) {
-        Serial1.println("LittleFS Mount Failed!");
+        Serial.println("LittleFS Mount Failed!");
         return;
     }
-    Serial1.println("LittleFS Mounted.");
+    Serial.println("LittleFS Mounted.");
 
     // Get LittleFS capacity information
     uint32_t total_bytes = LittleFS.totalBytes();
@@ -85,16 +86,16 @@ void setup() {
 
     // Call USBMSC::begin with LittleFS capacity information
     if (usb_msc_driver.begin(block_count, block_size)) {
-        Serial1.println("USB MSC driver started successfully");
+        Serial.println("USB MSC driver started successfully");
     } else {
-        Serial1.println("USB MSC driver failed to start");
+        Serial.println("USB MSC driver failed to start");
     }
 
     usbShellManagerPtr->begin(); // Initialize UsbShellManager
 
     wifiManager.addWiFi("CMCC-Tjv9", "n2w5yk6u");
     wifiManager.connectToWiFi("CMCC-Tjv9", "n2w5yk6u");
-    Serial1.println("Setup complete. Starting main loop...");
+    Serial.println("Setup complete. Starting main loop...");
 }
 void loop() {
     hardwareManager.update();

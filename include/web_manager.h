@@ -54,6 +54,8 @@ private:
     AsyncWebServer server;
     AsyncWebSocket ws;
     LLMMode currentLLMMode;
+    bool configUpdatePending = false;
+    JsonDocument pendingConfigDoc;
 
     /**
      * @brief WebSocket 事件处理回调函数。

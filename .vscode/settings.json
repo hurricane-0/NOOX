@@ -17,6 +17,7 @@
         "ratio": "cpp",
         "tuple": "cpp",
         "type_traits": "cpp",
-        "utility": "cpp"
+        "utility": "cpp",
+        "esp_heap_caps.h": "c"
     }
 }
