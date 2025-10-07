@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AIHi</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- 1. Top Bar -->
+        <header class="top-bar glass-effect">
+            <div class="project-name">AIHi</div>
+            <div class="mode-switch-and-settings">
+                <div class="mode-switch">
+                    <button id="dialogue-mode-btn" class="mode-btn active" data-label="Chat Mode">Chat</button>
+                    <button id="advanced-mode-btn" class="mode-btn" data-label="Advanced Mode">Advanced</button>
+                </div>
+                <button id="settings-btn" class="settings-btn" data-icon="settings"></button>
+            </div>
+        </header>
+
+        <!-- 2. Chat Area -->
+        <main class="chat-area card glass-effect">
+            <div class="messages" id="messages">
+                <!-- Chat messages will be appended here by JavaScript -->
+            </div>
+        </main>
+
+        <!-- 3. Input Box -->
+        <section class="input-area glass-effect">
+            <textarea id="message-input" placeholder="输入消息..."></textarea>
+            <button id="send-btn" class="send-btn" data-icon="send">发送</button>
+        </section>
+
+        <!-- 4. Advanced Mode Function Bar & Automation Command Area -->
+        <section class="advanced-mode-panels" id="advanced-mode-panels">
+            <div class="function-panel card glass-effect">
+                <h3>功能模块</h3>
+                <div class="function-list">
+                    <!-- Function modules will be dynamically added here -->
+                    <div class="function-item" data-label="WiFi">
+                        <span>
+                            WiFi
+                            <span class="description">Manage wireless connections</span>
+                        </span>
+                        <div class="actions">
+                            <button class="auto-btn">AUTO</button>
+                            <button class="detail-btn" data-icon="detail"></button>
+                        </div>
+                    </div>
+                    <div class="function-item" data-label="USB HID">
+                        <span>
+                            USB HID
+                            <span class="description">Control USB Human Interface Devices</span>
+                        </span>
+                        <div class="actions">
+                            <button class="auto-btn">AUTO</button>
+                            <button class="detail-btn" data-icon="detail"></button>
+                        </div>
+                    </div>
+                    <div class="function-item" data-label="蓝牙通信">
+                        <span>
+                            蓝牙通信
+                            <span class="description">Bluetooth communication settings</span>
+                        </span>
+                        <div class="actions">
+                            <button class="auto-btn">AUTO</button>
+                            <button class="detail-btn" data-icon="detail"></button>
+                        </div>
+                    </div>
+                    <div class="function-item" data-label="Timer">
+                        <span>
+                            Timer
+                            <span class="description">Set and manage timers</span>
+                        </span>
+                        <div class="actions">
+                            <button class="auto-btn">AUTO</button>
+                            <button class="detail-btn" data-icon="detail"></button>
+                        </div>
+                    </div>
+                    <div class="function-item" data-label="GPIO">
+                        <span>
+                            GPIO
+                            <span class="description">General Purpose Input/Output control</span>
+                        </span>
+                        <div class="actions">
+                            <button class="auto-btn">AUTO</button>
+                            <button class="detail-btn" data-icon="detail"></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Settings Sidebar (initially hidden) -->
+    <aside class="settings-sidebar" id="settings-sidebar">
+        <div class="sidebar-content">
+            <h2 data-label="Settings">设置</h2>
+
+            <div class="setting-section">
+                <h3 data-label="LLM Settings">LLM 设置</h3>
+                <label for="llm-provider-select" data-label="LLM Provider">提供商</label>
+                <select id="llm-provider-select" data-label="LLM Provider Select">
+                    <!-- Options will be populated by JS -->
+                </select>
+                <label for="llm-model-select" data-label="LLM Model">模型</label>
+                <select id="llm-model-select" data-label="LLM Model Select">
+                    <!-- Options will be populated by JS -->
+                </select>
+                <label for="llm-api-key" data-label="API Key">API Key</label>
+                <input type="password" id="llm-api-key" placeholder="当前提供商的 API Key" data-label="LLM API Key Input">
+            </div>
+
+            <div class="setting-section">
+                <h3 data-label="WiFi Management">WiFi 管理</h3>
+                <label for="wifi-network-select" data-label="Saved Networks">已存网络</label>
+                <select id="wifi-network-select" data-label="WiFi Network Select">
+                    <!-- Options will be populated by JS -->
+                </select>
+                <div class="wifi-buttons">
+                    <button id="wifi-connect-btn" class="primary-btn" data-label="连接">连接</button>
+                    <button id="wifi-disconnect-btn" class="secondary-btn" data-label="断开">断开</button>
+                    <button id="wifi-delete-btn" class="danger-btn" data-label="忘记" data-icon="delete">忘记</button>
+                </div>
+            </div>
+
+            <div class="setting-section">
+                <h3 data-label="Add/Update WiFi">添加/更新 WiFi</h3>
+                <input type="text" id="wifi-ssid-input" placeholder="WiFi 名称 (SSID)" data-label="WiFi SSID Input">
+                <input type="password" id="wifi-password-input" placeholder="WiFi 密码" data-label="WiFi Password Input">
+                <button id="wifi-add-btn" class="primary-btn" data-label="保存网络">保存网络</button>
+            </div>
+
+            <div class="settings-buttons">
+                <button id="save-settings-btn" class="primary-btn" data-label="保存并应用">保存并应用</button>
+                <button class="close-sidebar-btn secondary-btn" data-label="关闭">关闭</button>
+            </div>
+        </div>
+    </aside>
+
+    <script src="script.js"></script>
+</body>
+</html>

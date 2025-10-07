@@ -1,0 +1,782 @@
+:root {
+    --primary-bg-color: #121212; /* Deeper dark background */
+    --secondary-bg-color: rgba(255, 255, 255, 0.03); /* More subtle frosted glass background */
+    --text-color: #e0e0e0; /* Light text */
+    --accent-color: #ffdd1ccb; /* Brand accent color */
+    --highlight-color: #FFD700; /* A distinct highlight color, e.g., for warnings/errors */
+    --border-color: rgba(255, 255, 255, 0.08); /* Subtle borders */
+    --card-border-radius: 8px; /* Reduced border-radius */
+    --glass-blur: 8px; /* Slightly less blur */
+    --gradient-start: #ffc21c; /* Brand color for gradients */
+    --gradient-end: #FF8E1C63; /* Transparent brand color */
+
+    /* Font sizes hierarchy */
+    --font-size-h1: 2.2rem;
+    --font-size-h2: 1.8rem;
+    --font-size-h3: 1.4rem;
+    --font-size-body: 1rem;
+    --font-size-small: 0.85rem;
+    --font-size-xsmall: 0.75rem;
+}
+
+body {
+    margin: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: var(--text-color);
+    background-color: #121212; /* Deeper dark background */
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start; /* Align items to the top */
+    padding: 20px;
+    box-sizing: border-box;
+    overflow-y: auto; /* Allow scrolling for the body */
+    font-size: var(--font-size-body);
+}
+
+
+.glass-effect {
+    background-color: var(--secondary-bg-color);
+    backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid var(--border-color);
+    box-shadow: 0 2px 15px rgba(0, 0, 0, 0.2); /* More subtle shadow */
+}
+
+.card {
+    border-radius: var(--card-border-radius);
+    padding: 15px; /* Reduced padding for compactness */
+    margin-bottom: 15px; /* Reduced margin */
+    overflow: hidden; /* Ensures content respects border-radius */
+}
+
+.container {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 1024px; /* Increased max width for more horizontal space */
+    gap: 15px; /* Reduced gap for compactness */
+}
+
+/* Top Bar */
+.top-bar {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    display: flex;
+    justify-content: space-between; /* Distribute items */
+    align-items: center;
+    padding: 8px 15px; /* Adjusted padding */
+    border-radius: var(--card-border-radius);
+    /* margin-bottom: 15px; */ /* Handled by container gap */
+    box-sizing: border-box;
+    width: 100%;
+    height: 50px; /* Fixed height for the top bar */
+}
+
+.project-name {
+    font-size: var(--font-size-h2); /* Larger font size */
+    font-weight: bold;
+    color: var(--accent-color); /* Use brand color */
+    flex-shrink: 0;
+}
+
+.mode-switch-and-settings {
+    display: flex;
+    align-items: center;
+    gap: 15px; /* Adjusted gap */
+    margin-left: auto; /* Push to the right */
+}
+
+.mode-switch {
+    display: flex;
+    background-color: rgba(255, 255, 255, 0.08); /* Subtle dark background for the switch */
+    border-radius: 5px; /* Reduced border-radius */
+    overflow: hidden;
+    padding: 2px; /* Reduced padding inside the switch container */
+    position: relative;
+}
+
+.mode-btn {
+    background: none;
+    border: none;
+    color: var(--text-color); /* Light text for inactive buttons */
+    padding: 5px 12px; /* Adjusted padding */
+    cursor: pointer;
+    font-size: var(--font-size-small);
+    transition: background-color 0.3s ease, color 0.3s ease;
+    border-radius: 4px; /* Apply border-radius to individual buttons */
+    z-index: 1;
+    position: relative;
+}
+
+.mode-btn.active {
+    background-color: var(--accent-color); /* Brand color for active button */
+    color: #121212; /* Dark text for active button */
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.settings-btn {
+    background-color: transparent;
+    border: none;
+    border-radius: 5px;
+    width: 42px;
+    height: 42px;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: background-color 0.3s ease;
+    padding: 0;
+}
+
+.settings-btn:hover {
+    background-color: rgba(255, 255, 255, 0.08); /* Subtle hover effect */
+}
+
+/* General icon styling */
+[data-icon]::before {
+    font-family: 'Arial', sans-serif; /* Or an icon font if available */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: var(--text-color);
+    line-height: 1;
+}
+
+.settings-btn[data-icon="settings"]::before {
+    content: '\2699'; /* Unicode for gear icon */
+    font-size: 1.5em;
+}
+
+.send-btn[data-icon="send"]::before {
+    content: '\27A4'; /* Unicode for heavy black rightwards arrow */
+    font-size: 1em;
+}
+
+.detail-btn[data-icon="detail"]::before {
+    content: '\203A'; /* Unicode for single right-pointing angle quotation mark */
+    font-size: 1em;
+}
+
+.delete-wifi-btn[data-icon="delete"]::before {
+    content: '\2716'; /* Unicode for heavy multiplication x */
+    font-size: 0.9em;
+    color: var(--highlight-color);
+}
+
+/* Chat Area */
+.chat-area {
+    flex-grow: 1;
+    /* height: 450px; */ /* Removed fixed height */
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* Hide scrollbar for the main chat area */
+    position: relative;
+}
+
+.messages {
+    flex-grow: 1;
+    overflow-y: auto; /* Scrollable content */
+    padding-right: 8px; /* Space for scrollbar */
+}
+
+.messages::-webkit-scrollbar {
+    width: 6px; /* Thinner scrollbar */
+}
+
+.messages::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.03); /* Subtle track */
+    border-radius: 6px;
+}
+
+.messages::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1); /* Subtle thumb */
+    border-radius: 6px;
+}
+
+.messages::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.15); /* Slightly darker on hover */
+}
+
+/* Chat Bubbles */
+.message {
+    display: flex;
+    margin-bottom: 8px; /* Reduced margin */
+    max-width: 75%; /* Slightly less width */
+    padding: 8px 12px; /* Reduced padding */
+    border-radius: 8px; /* Reduced border-radius */
+    word-wrap: break-word;
+    line-height: 1.4;
+    font-size: var(--font-size-body);
+}
+
+.message.user {
+    background-color: rgba(255, 142, 28, 0.2); /* Darker shade of accent color for user messages */
+    color: var(--text-color);
+    margin-left: auto; /* Align to right */
+    border-bottom-right-radius: 4px; /* Sharpen corner for user bubble */
+}
+
+.message.ai {
+    background-color: rgba(255, 255, 255, 0.05); /* Frosted glass for AI messages */
+    color: var(--text-color);
+    margin-right: auto; /* Align to left */
+    border-bottom-left-radius: 4px; /* Sharpen corner for AI bubble */
+}
+
+.message.system, .message.system-error {
+    font-style: italic;
+    color: rgba(255, 255, 255, 0.5); /* More subtle system messages */
+    text-align: center;
+    width: 100%;
+    max-width: 100%;
+    background: none;
+    font-size: var(--font-size-small);
+}
+
+.message.system-error {
+    color: var(--highlight-color); /* A distinct highlight color for errors */
+    font-weight: bold;
+    font-size: var(--font-size-small);
+}
+
+.message .timestamp {
+    font-size: var(--font-size-xsmall);
+    color: rgba(255, 255, 255, 0.4);
+    margin-top: 5px;
+    text-align: right;
+    width: 100%;
+}
+
+/* Input Box */
+.input-area {
+    display: flex;
+    align-items: flex-end;
+    padding: 10px; /* Reduced padding */
+    border-radius: 8px; /* Reduced border-radius */
+    gap: 8px; /* Reduced gap */
+}
+
+#message-input {
+    flex-grow: 1;
+    background: rgba(255, 255, 255, 0.08); /* Subtle dark background */
+    border: 1px solid var(--border-color);
+    border-radius: 5px; /* Reduced border-radius */
+    padding: 8px 12px; /* Adjusted padding */
+    color: var(--text-color);
+    font-size: var(--font-size-body);
+    resize: vertical; /* Allow vertical resizing */
+    min-height: 40px;
+    max-height: 120px; /* Limit max height */
+    box-sizing: border-box;
+    overflow-y: auto;
+}
+
+#message-input::placeholder {
+    color: rgba(255, 255, 255, 0.4); /* More subtle placeholder */
+}
+
+#message-input:focus {
+    outline: none;
+    border-color: var(--accent-color);
+}
+
+.send-btn {
+    background-color: var(--accent-color);
+    border: none;
+    border-radius: 5px; /* Reduced border-radius */
+    padding: 8px 15px; /* Adjusted padding */
+    color: #121212; /* Dark text for contrast */
+    font-size: var(--font-size-body);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+/* Advanced Mode Panels */
+.advanced-mode-panels {
+    display: none; /* Initially hidden by default */
+    flex-direction: column;
+    gap: 15px; /* Reduced gap */
+}
+
+.advanced-mode-panels.active {
+    display: flex; /* Show when active class is present */
+}
+
+.function-panel {
+    padding: 15px; /* Reduced padding */
+}
+
+.function-panel h3 {
+    margin-top: 0;
+    color: var(--text-color);
+    font-size: var(--font-size-h3);
+}
+
+.function-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px; /* Reduced gap */
+}
+
+.function-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: rgba(255, 255, 255, 0.05); /* Subtle dark background */
+    border-radius: 5px; /* Reduced border-radius */
+    padding: 8px 12px; /* Reduced padding */
+    font-size: var(--font-size-body);
+}
+
+.function-item span {
+    font-weight: 500; /* Slightly less bold */
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.function-item .description {
+    font-size: var(--font-size-xsmall);
+    color: rgba(255, 255, 255, 0.5);
+    margin-top: 2px;
+}
+
+.function-item .actions {
+    display: flex;
+    gap: 8px; /* Reduced gap */
+}
+
+.function-item .auto-btn,
+.function-item .detail-btn { /* Apply common styles to all auto buttons */
+    background-color: var(--accent-color);
+    border: none;
+    border-radius: 4px; /* Reduced border-radius */
+    color: #121212; /* Dark text for contrast */
+    padding: 4px 8px; /* Adjusted padding */
+    cursor: pointer;
+    font-size: var(--font-size-xsmall);
+    transition: background-color 0.3s ease;
+}
+
+.function-item .auto-btn.active {
+    background-color: #28a745; /* Green when active */
+}
+
+.function-item .detail-btn {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: var(--text-color);
+    min-width: 50px;
+    padding: 6px 10px;
+}
+
+/* Settings Sidebar */
+.settings-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 280px; /* Fixed width */
+    height: 100%;
+    background-color: #1a1a1a; /* Slightly lighter dark background for sidebar */
+    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.4);
+    transform: translateX(-100%);
+    transition: transform 0.3s ease-in-out;
+    z-index: 2000;
+    overflow-y: auto;
+    padding: 15px; /* Reduced padding */
+    box-sizing: border-box;
+    border-radius: 0 8px 8px 0; /* Rounded corners only on the right side */
+}
+
+.settings-sidebar.open {
+    transform: translateX(0);
+}
+
+.sidebar-content {
+    position: relative;
+}
+
+.close-sidebar-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1); /* Darker background on hover */
+}
+
+.settings-sidebar h2 {
+    color: var(--text-color);
+    margin-top: 0;
+    margin-bottom: 15px; /* Reduced margin */
+    font-size: var(--font-size-h2);
+}
+
+.settings-buttons {
+    display: flex;
+    justify-content: flex-end; /* Align items to the right */
+    align-items: center;
+    gap: 8px; /* Reduced space between buttons */
+    margin-top: 15px; /* Reduced space from the elements above */
+}
+
+.setting-section {
+    margin-bottom: 15px; /* Reduced margin */
+    padding-bottom: 10px; /* Reduced padding */
+    border-bottom: 1px solid var(--border-color);
+}
+
+.setting-section:last-child {
+    border-bottom: none;
+}
+
+.setting-section h3 {
+    color: var(--text-color);
+    margin-top: 0;
+    margin-bottom: 8px; /* Reduced margin */
+    font-size: var(--font-size-h3);
+}
+
+.settings-sidebar label {
+    font-size: var(--font-size-small);
+    color: rgba(255, 255, 255, 0.7);
+    margin-bottom: 5px;
+    display: block;
+}
+
+.wifi-entry {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: rgba(255, 255, 255, 0.05); /* Subtle dark background */
+    border-radius: 5px; /* Reduced border-radius */
+    padding: 6px 10px; /* Reduced padding */
+    margin-bottom: 6px; /* Reduced margin */
+}
+
+.wifi-entry span {
+    font-size: var(--font-size-small);
+}
+
+.delete-wifi-btn {
+    background: none;
+    border: none;
+    color: var(--highlight-color); /* Emphasis color for delete */
+    cursor: pointer;
+    font-size: 1em;
+    border-radius: 3px;
+    padding: 4px 8px;
+}
+
+.delete-wifi-btn:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.settings-sidebar input[type="text"],
+.settings-sidebar input[type="password"],
+.settings-sidebar select {
+    width: 100%; /* Full width within its container */
+    padding: 10px; /* Slightly more padding */
+    margin-bottom: 10px; /* Reduced spacing */
+    background-color: rgba(255, 255, 255, 0.08); /* Slightly more opaque background */
+    border: 1px solid rgba(255, 255, 255, 0.15); /* More visible border */
+    border-radius: 5px; /* Reduced border-radius */
+    color: var(--text-color);
+    font-size: var(--font-size-body);
+    box-sizing: border-box; /* Include padding and border in the element's total width and height */
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); /* Subtle shadow for depth */
+    height: 38px; /* Consistent height */
+}
+
+.settings-sidebar input::placeholder {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.settings-sidebar button {
+    background-color: var(--accent-color);
+    border: none;
+    border-radius: 5px; /* Reduced border-radius */
+    color: #121212; /* Dark text for contrast */
+    padding: 8px 12px; /* Adjusted padding */
+    cursor: pointer;
+    font-size: var(--font-size-body);
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: 8px; /* Consistent spacing */
+    transition: background-color 0.3s ease;
+}
+
+.primary-btn {
+    background-color: var(--accent-color); /* Brand color for primary action */
+    color: #121212;
+    padding: 8px 12px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: var(--font-size-body);
+    flex-grow: 1;
+    box-sizing: border-box;
+    transition: background-color 0.3s ease;
+}
+
+.primary-btn:hover {
+    background-color: #e67e00; /* Darker brand color on hover */
+}
+
+.secondary-btn {
+    background-color: rgba(255, 255, 255, 0.1); /* Lighter, more transparent for secondary */
+    color: var(--text-color);
+    padding: 8px 12px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: var(--font-size-body);
+    flex-grow: 1;
+    box-sizing: border-box;
+    transition: background-color 0.3s ease;
+}
+
+.secondary-btn:hover {
+    background-color: rgba(255, 255, 255, 0.08); /* Darker transparent on hover */
+}
+
+.danger-btn {
+    background-color: #dc3545; /* Red for danger actions */
+    color: #fff;
+    padding: 8px 12px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: var(--font-size-body);
+    flex-grow: 1;
+    box-sizing: border-box;
+    transition: background-color 0.3s ease;
+}
+
+.danger-btn:hover {
+    background-color: #c82333;
+}
+
+#save-settings-btn {
+    margin-top: 0; /* Align with close button */
+}
+
+/* Specific adjustments for WiFi list and input fields */
+.setting-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px; /* Reduced space between elements in a section */
+}
+
+.setting-section h3 {
+    margin-bottom: 5px; /* Reduce space below heading */
+}
+
+.wifi-buttons {
+    display: flex;
+    gap: 8px;
+    margin-top: 5px;
+}
+
+.wifi-entry {
+    display: grid;
+    grid-template-columns: 1fr auto; /* Name and Delete button */
+    align-items: center;
+    gap: 8px; /* Reduced space between columns */
+    background-color: rgba(255, 255, 255, 0.05);
+    border-radius: 5px;
+    padding: 6px 10px;
+}
+
+.wifi-entry span {
+    font-size: var(--font-size-small);
+    white-space: nowrap; /* Prevent text from wrapping */
+    overflow: hidden;
+    text-overflow: ellipsis; /* Add ellipsis if text overflows */
+}
+
+.delete-wifi-btn {
+    width: auto; /* Override 100% width from general button style */
+    margin-top: 0; /* Override margin-top from general button style */
+    padding: 4px 8px;
+    background: none;
+    border: none;
+    color: var(--highlight-color);
+    cursor: pointer;
+    font-size: var(--font-size-small);
+    border-radius: 3px;
+}
+
+.delete-wifi-btn:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+#wifi-add-btn {
+    margin-top: 0; /* Align with input fields */
+}
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+    body {
+        padding: 10px;
+    }
+
+    .container {
+        gap: 10px;
+    }
+
+    .top-bar {
+        padding: 5px 10px;
+        height: auto;
+    }
+
+    .project-name {
+        font-size: var(--font-size-h3);
+    }
+
+    .mode-switch-and-settings {
+        gap: 10px;
+    }
+
+    .mode-btn {
+        padding: 4px 10px;
+        font-size: var(--font-size-xsmall);
+    }
+
+    .settings-btn {
+        width: 30px;
+        height: 30px;
+    }
+
+    .settings-btn img {
+        width: 18px;
+        height: 18px;
+    }
+
+    .chat-area {
+        height: 300px;
+    }
+
+    .message {
+        max-width: 90%;
+        padding: 6px 10px;
+        font-size: var(--font-size-small);
+    }
+
+    .input-area {
+        padding: 8px;
+        gap: 6px;
+    }
+
+    #message-input {
+        padding: 6px 10px;
+        min-height: 35px;
+        max-height: 100px;
+        font-size: var(--font-size-small);
+    }
+
+    .send-btn {
+        padding: 6px 12px;
+        font-size: var(--font-size-small);
+    }
+
+    .advanced-mode-panels {
+        gap: 10px;
+    }
+
+    .function-panel {
+        padding: 10px;
+    }
+
+    .function-panel h3 {
+        font-size: var(--font-size-body);
+    }
+
+    .function-list {
+        gap: 6px;
+    }
+
+    .function-item {
+        padding: 6px 10px;
+        font-size: var(--font-size-small);
+    }
+
+    .function-item .actions {
+        gap: 6px;
+    }
+
+    .function-item .auto-btn,
+    .function-item .detail-btn {
+        padding: 3px 6px;
+        font-size: var(--font-size-xsmall);
+    }
+
+    .settings-sidebar {
+        width: 100%;
+        padding: 10px;
+        border-radius: 0;
+    }
+
+    .settings-sidebar h2 {
+        font-size: var(--font-size-h3);
+        margin-bottom: 10px;
+    }
+
+    .settings-buttons {
+        gap: 6px;
+        margin-top: 10px;
+    }
+
+    .setting-section {
+        margin-bottom: 10px;
+        padding-bottom: 8px;
+    }
+
+    .setting-section h3 {
+        font-size: var(--font-size-body);
+        margin-bottom: 6px;
+    }
+
+    .settings-sidebar label {
+        font-size: var(--font-size-xsmall);
+    }
+
+    .wifi-entry {
+        padding: 4px 8px;
+        margin-bottom: 4px;
+    }
+
+    .wifi-entry span {
+        font-size: var(--font-size-xsmall);
+    }
+
+    .delete-wifi-btn {
+        font-size: var(--font-size-xsmall);
+        padding: 3px 6px;
+    }
+
+    .settings-sidebar input[type="text"],
+    .settings-sidebar input[type="password"],
+    .settings-sidebar select {
+        padding: 8px;
+        margin-bottom: 8px;
+        font-size: var(--font-size-small);
+        height: 32px;
+    }
+
+    .settings-sidebar button {
+        padding: 6px 10px;
+        font-size: var(--font-size-small);
+        margin-top: 6px;
+    }
+
+    .primary-btn, .secondary-btn, .danger-btn {
+        padding: 6px 10px;
+        font-size: var(--font-size-small);
+    }
+
+    .wifi-buttons {
+        gap: 6px;
+        margin-top: 4px;
+    }
+
+    .wifi-entry {
+        gap: 6px;
+        padding: 4px 8px;
+    }
+}
