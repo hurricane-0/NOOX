@@ -63,7 +63,7 @@ func init() {
 
 func main() {
 	flag.Parse()
-	log.Println("AIHi Host Agent starting...")
+	log.Println("NOOX Host Agent starting...")
 	log.Printf("Initial WiFi Status from ESP32: %s", wifiStatus)
 
 	err := connectToESP32()
@@ -177,7 +177,7 @@ func readFromESP32() {
 		err = json.Unmarshal([]byte(line), &espResponse)
 		if err != nil {
 			log.Printf("Error unmarshalling ESP32 response: %v, Raw: %s", err, line)
-			fmt.Printf("[AIHi Device] Raw: %s\n", line)
+			fmt.Printf("[NOOX Device] Raw: %s\n", line)
 			continue
 		}
 
@@ -194,7 +194,7 @@ func handleESP32Response(resp ESP32Response) {
 			log.Printf("Error: shellCommand payload is not a string: %v", resp.Payload)
 			return
 		}
-		fmt.Printf("[AIHi Shell] Executing: %s\n", command)
+		fmt.Printf("[NOOX Shell] Executing: %s\n", command)
 		executeLocalShellCommand(command)
 	case "aiResponse":
 		// Payload is the AI response string
@@ -203,7 +203,7 @@ func handleESP32Response(resp ESP32Response) {
 			log.Printf("Error: aiResponse payload is not a string: %v", resp.Payload)
 			return
 		}
-		fmt.Printf("[AIHi AI] %s\n", aiResponse)
+		fmt.Printf("[NOOX AI] %s\n", aiResponse)
 	case "linkTestResult":
 		// Payload is the linkTest result string (e.g., "pong")
 		linkTestResult, ok := resp.Payload.(string)
@@ -211,7 +211,7 @@ func handleESP32Response(resp ESP32Response) {
 			log.Printf("Error: linkTestResult payload is not a string: %v", resp.Payload)
 			return
 		}
-		fmt.Printf("[AIHi Device] Link Test Result (RequestId: %s): %s - %s\n", resp.RequestId, resp.Status, linkTestResult)
+		fmt.Printf("[NOOX Device] Link Test Result (RequestId: %s): %s - %s\n", resp.RequestId, resp.Status, linkTestResult)
 	case "wifiConnectStatus":
 		// Payload is the WiFi connection status message
 		wifiStatusMsg, ok := resp.Payload.(string)
@@ -219,7 +219,7 @@ func handleESP32Response(resp ESP32Response) {
 			log.Printf("Error: wifiConnectStatus payload is not a string: %v", resp.Payload)
 			return
 		}
-		fmt.Printf("[AIHi Device] WiFi Connect Status (RequestId: %s): %s - %s\n", resp.RequestId, resp.Status, wifiStatusMsg)
+		fmt.Printf("[NOOX Device] WiFi Connect Status (RequestId: %s): %s - %s\n", resp.RequestId, resp.Status, wifiStatusMsg)
 	case "error":
 		// Generic error from ESP32
 		errMsg := ""
@@ -230,9 +230,9 @@ func handleESP32Response(resp ESP32Response) {
 		} else {
 			errMsg = "Unknown error from ESP32"
 		}
-		fmt.Printf("[AIHi Device Error] (RequestId: %s) %s\n", resp.RequestId, errMsg)
+		fmt.Printf("[NOOX Device Error] (RequestId: %s) %s\n", resp.RequestId, errMsg)
 	default:
-		fmt.Printf("[AIHi Device] Unknown response type: %s (RequestId: %s, Status: %s, Content: %s, Payload: %v)\n",
+		fmt.Printf("[NOOX Device] Unknown response type: %s (RequestId: %s, Status: %s, Content: %s, Payload: %v)\n",
 			resp.Type, resp.RequestId, resp.Status, resp.Content, resp.Payload)
 	}
 }

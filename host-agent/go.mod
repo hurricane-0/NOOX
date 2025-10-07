@@ -1,4 +1,4 @@
-module aihi-host-agent
+module NOOX-host-agent
 
 go 1.25.1
 

@@ -313,6 +313,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Initialization ---
     // 页面初始化，显示欢迎信息并尝试连接设备
-    appendMessage('Welcome to AIHi! Attempting to connect to device...', 'system');
+    appendMessage('Welcome to NOOX! Attempting to connect to device...', 'system');
     initWebSocket();
 });

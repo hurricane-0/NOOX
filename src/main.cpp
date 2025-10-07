@@ -80,8 +80,8 @@ void setup() {
     }
 
     // Set vendorID, productID, etc. for USBMSC
-    usb_msc_driver.vendorID("AIHi_Agent");
-    usb_msc_driver.productID("MyAIHiDisk");
+    usb_msc_driver.vendorID("NOOX_Agent");
+    usb_msc_driver.productID("MyNOOXDisk");
     usb_msc_driver.productRevision("1.0");
 
     // Call USBMSC::begin with LittleFS capacity information

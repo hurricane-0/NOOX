@@ -258,10 +258,10 @@ String LLMManager::getOpenAILikeResponse(const String& requestId, const String& 
             }
 
             if (!error) {
-                if (responseDoc.containsKey("choices") && 
-                    responseDoc["choices"].size() > 0 && 
-                    responseDoc["choices"][0].containsKey("message") && 
-                    responseDoc["choices"][0]["message"].containsKey("content")) {
+                if (responseDoc["choices"].is<JsonArray>() &&
+                    responseDoc["choices"].size() > 0 &&
+                    responseDoc["choices"][0]["message"].is<JsonObject>() &&
+                    responseDoc["choices"][0]["message"]["content"].is<String>()) {
                     
                     // 只返回实际的消息内容
                     String content = responseDoc["choices"][0]["message"]["content"].as<String>();

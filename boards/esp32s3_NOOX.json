@@ -27,7 +27,7 @@
     "arduino",
     "espidf"
   ],
-  "name": "ESP32-S3 AI Hardware",
+  "name": "ESP32-S3 NOOX",
   "upload": {
     "flash_size": "16MB",
     "maximum_ram_size": 8388608,
