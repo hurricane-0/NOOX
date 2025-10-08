@@ -46,19 +46,6 @@ void LLMManager::begin() {
     Serial.printf("LLMManager initialized. Provider: %s, Model: %s\n", currentProvider.c_str(), currentModel.c_str());
 }
 
-// 启动 LLM 后台处理任务
-void LLMManager::startLLMTask() {
-    // 创建一个 FreeRTOS 任务，用于在后台处理LLM请求，避免阻塞主循环
-    xTaskCreatePinnedToCore(
-        llmTask,          // 任务函数
-        "LLMTask",        // 任务名称
-        8192 * 2,         // 任务堆栈大小
-        this,             // 传递给任务的参数（指向当前对象的指针）
-        5,                // 任务优先级
-        NULL,             // 任务句柄（此处不使用）
-        0);               // 运行的核心
-    Serial.println("LLM processing task started.");
-}
 
 // 根据当前提供商生成响应（此函数由后台任务调用）
 String LLMManager::generateResponse(const String& requestId, const String& prompt, LLMMode mode) {
@@ -355,6 +342,17 @@ String LLMManager::getToolDescriptions() {
 
 // 处理 LLM 的原始响应，解析工具调用或自然语言回复。
 void LLMManager::handleLLMRawResponse(const String& requestId, const String& llmRawResponse) {
+    // 如果 USB Shell 不可用，则将响应发送到 Web UI 队列
+    if (!_usbShellManager) {
+        LLMResponse response;
+        response.requestId = requestId;
+        response.response = llmRawResponse;
+        if (xQueueSend(llmResponseQueue, &response, 0) != pdPASS) {
+            Serial.println("handleLLMRawResponse: Failed to send response to queue for Web UI.");
+        }
+        return;
+    }
+
     // 首先尝试检查这是否是纯文本响应
     if (!llmRawResponse.startsWith("{") && !llmRawResponse.startsWith("[")) {
         // 如果是纯文本响应，直接发送
@@ -413,23 +411,20 @@ void LLMManager::handleLLMRawResponse(const String& requestId, const String& llm
     }
 }
 
-// LLM 后台任务函数
-void LLMManager::llmTask(void* pvParameters) {
-    LLMManager* llmManager = static_cast<LLMManager*>(pvParameters); // 将参数转换为 LLMManager 指针
+// LLM aysnc loop
+void LLMManager::loop() {
     LLMRequest request;   // 用于存储接收到的请求
     String llmRawResponse; // 用于存储生成的原始响应
 
-    for (;;) { // 无限循环，持续处理请求
-        // 从请求队列中接收一个请求，如果队列为空，此调用会阻塞任务，直到有新请求到来
-        if (xQueueReceive(llmManager->llmRequestQueue, &request, portMAX_DELAY) == pdPASS) {
-            Serial.printf("LLMTask: Received request for prompt: %s (requestId: %s)\n", request.prompt.c_str(), request.requestId.c_str());
-            
-            // 调用核心函数生成响应
-            llmRawResponse = llmManager->generateResponse(request.requestId, request.prompt, request.mode);
-            Serial.printf("LLMTask: Generated raw response: %s\n", llmRawResponse.c_str());
+    // 检查队列中是否有请求，非阻塞
+    if (xQueueReceive(llmRequestQueue, &request, 0) == pdPASS) {
+        Serial.printf("LLMTask: Received request for prompt: %s (requestId: %s)\n", request.prompt.c_str(), request.requestId.c_str());
+        
+        // 调用核心函数生成响应
+        llmRawResponse = generateResponse(request.requestId, request.prompt, request.mode);
+        Serial.printf("LLMTask: Generated raw response: %s\n", llmRawResponse.c_str());
 
-            // 处理LLM的原始响应，解析工具调用或自然语言回复
-            llmManager->handleLLMRawResponse(request.requestId, llmRawResponse);
-        }
+        // 处理LLM的原始响应，解析工具调用或自然语言回复
+        handleLLMRawResponse(request.requestId, llmRawResponse);
     }
 }

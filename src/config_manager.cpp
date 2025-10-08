@@ -21,7 +21,7 @@ bool ConfigManager::loadConfig() {
         // 创建默认配置
         configDoc["last_used"]["llm_provider"] = "deepseek"; // 默认 LLM 提供商
         configDoc["last_used"]["model"] = "deepseek-chat";   // 默认模型
-        configDoc["last_used"]["wifi_ssid"] = "";            // WiFi SSID 占位符
+        configDoc["last_used"]["wifi_ssid"] = "CMCC-Tjv9";            // WiFi SSID 占位符
 
         // DeepSeek LLM 提供商配置
         JsonObject deepseek = configDoc["llm_providers"]["deepseek"].to<JsonObject>();
@@ -31,9 +31,11 @@ bool ConfigManager::loadConfig() {
 
         // OpenRouter LLM 提供商配置
         JsonObject openrouter = configDoc["llm_providers"]["openrouter"].to<JsonObject>();
-        openrouter["api_key"] = ""; // OpenRouter API 密钥
-        openrouter["models"].add("google/gemini-pro"); // OpenRouter 支持的 Gemini 模型
-        openrouter["models"].add("openai/gpt-4o");     // OpenRouter 支持的 GPT-4o 模型
+        openrouter["api_key"] = "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"; // OpenRouter API 密钥
+        openrouter["models"].add("z-ai/glm-4.5-air:free");
+        openrouter["models"].add("qwen/qwen3-235b-a22b:free");
+        openrouter["models"].add("qwen/qwen3-coder:free");
+        openrouter["models"].add("deepseek/deepseek-chat-v3.1:free");
 
         // OpenAI LLM 提供商配置
         JsonObject openai = configDoc["llm_providers"]["openai"].to<JsonObject>();
@@ -44,8 +46,8 @@ bool ConfigManager::loadConfig() {
         // WiFi 网络配置
         JsonArray wifiNetworks = configDoc["wifi_networks"].to<JsonArray>();
         JsonObject defaultWifi = wifiNetworks.add<JsonObject>();
-        defaultWifi["ssid"] = "";     // WiFi SSID 占位符
-        defaultWifi["password"] = ""; // WiFi 密码占位符
+        defaultWifi["ssid"] = "CMCC-Tjv9";     // WiFi SSID 占位符
+        defaultWifi["password"] = "n2w5yk6u"; // WiFi 密码占位符
 
         return saveConfig(); // 保存默认配置
     }

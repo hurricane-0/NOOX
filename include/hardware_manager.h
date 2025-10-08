@@ -9,7 +9,6 @@ class HardwareManager {
 public:
     HardwareManager();
     void begin();
-    void update();
 
     // OLED Display
     U8G2_SSD1315_128X64_NONAME_F_HW_I2C& getDisplay();

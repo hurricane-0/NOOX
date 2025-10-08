@@ -33,7 +33,7 @@ void UsbShellManager::loop() {
 }
 
 void UsbShellManager::handleUsbSerialData() {
-    while (_cdc.available()) {
+    if (_cdc.available()) {
         char c = _cdc.read();
         _inputBuffer += c;
 

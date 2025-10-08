@@ -30,9 +30,6 @@ void HardwareManager::begin() {
     pinMode(RESERVED_GPIO_2, OUTPUT);
 }
 
-void HardwareManager::update() {
-    // Handle hardware updates here
-}
 
 U8G2_SSD1315_128X64_NONAME_F_HW_I2C& HardwareManager::getDisplay() {
     return u8g2;

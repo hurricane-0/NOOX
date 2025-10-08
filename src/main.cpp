@@ -30,6 +30,38 @@ TaskManager taskManager(hidManager, wifiManager, hardwareManager);
 // Declare UIManager after llmManagerPtr is instantiated
 UIManager* uiManagerPtr;
 
+// Task for WebManager
+void webTask(void* pvParameters) {
+    for (;;) {
+        webManagerPtr->loop();
+        vTaskDelay(pdMS_TO_TICKS(10)); // Small delay to yield
+    }
+}
+
+// Task for UIManager
+void uiTask(void* pvParameters) {
+    for (;;) {
+        uiManagerPtr->update();
+        vTaskDelay(pdMS_TO_TICKS(10)); // Small delay to yield
+    }
+}
+
+// Task for UsbShellManager
+void usbTask(void* pvParameters) {
+    for (;;) {
+        usbShellManagerPtr->loop();
+        vTaskDelay(pdMS_TO_TICKS(10)); // Small delay to yield
+    }
+}
+
+// Task for LLMManager
+void llmTask(void* pvParameters) {
+    for (;;) {
+        llmManagerPtr->loop();
+        vTaskDelay(pdMS_TO_TICKS(10)); // Small delay to yield
+    }
+}
+
 void setup() {
     // Initialize UART1 for Serial output
     Serial.begin(115200);
@@ -51,7 +83,6 @@ void setup() {
     wifiManager.begin();
     
     llmManagerPtr->begin();
-    llmManagerPtr->startLLMTask();
     
     // Instantiate UIManager after LLMManager is ready
     uiManagerPtr = new UIManager(hardwareManager, wifiManager, taskManager, *llmManagerPtr);
@@ -81,7 +112,7 @@ void setup() {
 
     // Set vendorID, productID, etc. for USBMSC
     usb_msc_driver.vendorID("NOOX_Agent");
-    usb_msc_driver.productID("MyNOOXDisk");
+    usb_msc_driver.productID("NOOXDisk");
     usb_msc_driver.productRevision("1.0");
 
     // Call USBMSC::begin with LittleFS capacity information
@@ -93,14 +124,15 @@ void setup() {
 
     usbShellManagerPtr->begin(); // Initialize UsbShellManager
 
-    wifiManager.addWiFi("CMCC-Tjv9", "n2w5yk6u");
-    wifiManager.connectToWiFi("CMCC-Tjv9", "n2w5yk6u");
+    // Create FreeRTOS tasks for all managers
+    xTaskCreatePinnedToCore(webTask, "WebTask", 4096, NULL, 2, NULL, 0);
+    xTaskCreatePinnedToCore(uiTask, "UITask", 4096, NULL, 2, NULL, 1);
+    xTaskCreatePinnedToCore(usbTask, "USBTask", 4096, NULL, 2, NULL, 1);
+    xTaskCreatePinnedToCore(llmTask, "LLMTask", 8192 * 2, NULL, 2, NULL, 1);
+
     Serial.println("Setup complete. Starting main loop...");
 }
 void loop() {
-    hardwareManager.update();
     wifiManager.loop();
-    uiManagerPtr->update(); // Call update on the pointer
-    webManagerPtr->loop(); // Call WebManager loop
-    usbShellManagerPtr->loop(); // Call UsbShellManager loop
+    delay(1); // Add a small delay to yield to other tasks
 }

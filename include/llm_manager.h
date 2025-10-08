@@ -76,10 +76,11 @@ public:
     void begin();
 
     /**
-     * @brief 启动 LLM 后台处理任务。
-     *        创建一个 FreeRTOS 任务来异步处理 LLM 请求队列。
+     * @brief LLM aysnc loop.
+     *        It constantly waits for and retrieves requests from llmRequestQueue,
+     *        calls generateResponse to process the request, and then puts the result into llmResponseQueue.
      */
-    void startLLMTask();
+    void loop();
 
     /**
      * @brief 处理来自主机的用户输入。
@@ -106,6 +107,7 @@ public:
     QueueHandle_t llmRequestQueue;  ///< LLM 请求队列的句柄。
     QueueHandle_t llmResponseQueue; ///< LLM 响应队列的句柄。
 
+
 private:
     ConfigManager& configManager; ///< ConfigManager 的引用。
     AppWiFiManager& wifiManager;   ///< AppWiFiManager 的引用。
@@ -114,13 +116,6 @@ private:
     String currentModel;          ///< 当前使用的模型名称。
     String currentApiKey;         ///< 当前提供商的 API 密钥。
 
-    /**
-     * @brief FreeRTOS 任务函数，在后台运行。
-     *        它不断地从 llmRequestQueue 中等待并获取请求，
-     *        调用 generateResponse 处理请求，然后将结果放入 llmResponseQueue。
-     * @param pvParameters 指向 LLMManager 实例的指针。
-     */
-    static void llmTask(void* pvParameters);
 
     /**
      * @brief 根据提示、模式和授权工具生成 LLM 响应。
