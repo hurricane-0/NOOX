@@ -1,0 +1,12 @@
+void WebManager::setupRoutes() {
+    // Add CORS headers to all responses
+    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
+    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    DefaultHeaders::Instance().addHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+
+
+ response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate"); // 禁用缓存
+
+
+问题出在esp32-s3硬件射频上

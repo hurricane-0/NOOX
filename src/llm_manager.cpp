@@ -6,6 +6,7 @@
 
 // 为LLM响应定义JSON文档缓冲区的大小
 const size_t JSON_DOC_SIZE = 262144; // 为可能更大的LLM响应增加了大小，并利用PSRAM
+const size_t MAX_RESPONSE_LENGTH = JSON_DOC_SIZE; // Maximum expected response length
 
 // 用于配置网络超时的常量
 const unsigned long NETWORK_TIMEOUT = 20000;  // 20秒
@@ -184,93 +185,90 @@ String LLMManager::getOpenAILikeResponse(const String& requestId, const String& 
     String requestBody;
     serializeJson(doc, requestBody);
 
-    Serial.printf("Sending POST request with body: %s\n", requestBody.c_str());
     int httpCode = http.POST(requestBody);
     Serial.printf("POST request completed with code: %d\n", httpCode);
 
     if (httpCode > 0) {
         if (httpCode == HTTP_CODE_OK) {
-            // 使用流式方式接收响应
+            // 使用缓冲区方式接收响应以避免内存碎片
             WiFiClient* stream = http.getStreamPtr();
-            String response;
-            int totalBytesRead = 0;
+            char* buffer = (char*)ps_malloc(MAX_RESPONSE_LENGTH); // 使用PSRAM分配缓冲区
+            if (!buffer) {
+                http.end();
+                return "Error: Failed to allocate memory for response buffer";
+            }
+            memset(buffer, 0, MAX_RESPONSE_LENGTH);
+            
+            size_t totalBytesRead = 0;
             unsigned long startTime = millis();
             
             Serial.println("Starting to read response stream...");
-            String cleanResponse;
-            bool foundStart = false;
             
-            while (http.connected() && (millis() - startTime < 20000)) { // 20秒超时
-                size_t size = stream->available();
-                if (size) {
-                    String chunk = stream->readString();
-                    totalBytesRead += chunk.length();
-                    response += chunk;
-                    Serial.printf("Read chunk of size %d bytes. Total bytes read: %d\n", chunk.length(), totalBytesRead);
-                    startTime = millis(); // 重置超时计时器
+            while (http.connected() && (millis() - startTime < STREAM_TIMEOUT) && 
+                   totalBytesRead < MAX_RESPONSE_LENGTH - 1) { // 留一个字节给空终止符
+                size_t available = stream->available();
+                if (available) {
+                    size_t bytesToRead = min(available, MAX_RESPONSE_LENGTH - 1 - totalBytesRead);
+                    size_t bytesRead = stream->readBytes(buffer + totalBytesRead, bytesToRead);
+                    totalBytesRead += bytesRead;
+                    startTime = millis(); // Reset timeout timer
                 } else {
-                    delay(100); // 等待更多数据
+                    delay(RETRY_DELAY); // Wait for more data
                 }
             }
             
-            Serial.printf("Stream reading completed. Total response length: %d\n", response.length());
-            Serial.printf("Raw response content: %s\n", response.c_str());
+            buffer[totalBytesRead] = '\0';
+            Serial.printf("[LLM] Received %d bytes\n", totalBytesRead);
             
-            // 清理分块传输的元数据
-            int start = response.indexOf('{');
-            int end = response.lastIndexOf('}');
+            // 提取JSON响应
+            char* start = strchr(buffer, '{');
+            char* end = strrchr(buffer, '}');
             
-            if (start >= 0 && end >= 0 && end > start) {
-                cleanResponse = response.substring(start, end + 1);
-                Serial.printf("Clean JSON response: %s\n", cleanResponse.c_str());
+            String jsonStr;
+            if (start && end && end > start) {
+                *++end = '\0';
+                jsonStr = String(start);
             } else {
-                Serial.println("Failed to extract JSON from response");
-                cleanResponse = response; // 保留原始响应以便调试
+                free(buffer);
+                http.end();
+                Serial.println("[LLM] Error: Invalid JSON response");
+                return "Error: Invalid response format";
             }
             
+            free(buffer);
             http.end();
             
-            // 使用清理后的响应
-            response = cleanResponse;
-            
-            if(response.length() == 0) {
-                return "Error: Empty response received from server";
+            if(jsonStr.isEmpty()) {
+                Serial.println("[LLM] Error: Empty response");
+                return "Error: Empty response";
             }
             
+            // 解析JSON
             JsonDocument responseDoc;
-            DeserializationError error = deserializeJson(responseDoc, response);
+            DeserializationError error = deserializeJson(responseDoc, jsonStr);
             
             if(error) {
-                Serial.printf("JSON parse error: %s\nResponse was: %s\n", error.c_str(), response.c_str());
+                Serial.printf("[LLM] JSON parse error: %s\n", error.c_str());
+                return "Error: Failed to parse response";
             }
 
-            if (!error) {
-                if (responseDoc["choices"].is<JsonArray>() &&
-                    responseDoc["choices"].size() > 0 &&
-                    responseDoc["choices"][0]["message"].is<JsonObject>() &&
-                    responseDoc["choices"][0]["message"]["content"].is<String>()) {
-                    
-                    // 只返回实际的消息内容
-                    String content = responseDoc["choices"][0]["message"]["content"].as<String>();
-                    Serial.printf("Extracted message content: %s\n", content.c_str());
-                    return content;
-                } else {
-                    Serial.println("Response JSON structure is not as expected");
-                    return "Error: Unexpected JSON response structure";
-                }
-            } else {
-                Serial.printf("JSON parse error: %s\n", error.c_str());
-                return "Error: Failed to parse JSON response: " + String(error.c_str());
+            // 只提取 LLM 的实际回复内容
+            if (responseDoc["choices"][0]["message"]["content"].is<String>()) {
+                String content = responseDoc["choices"][0]["message"]["content"].as<String>();
+                return content;
             }
+            
+            Serial.println("[LLM] Error: Invalid response structure");
+            return "Error: Invalid response structure";
         } else {
-            String response = http.getString();
             http.end();
-            return "Error: API request failed with status code " + String(httpCode) + " " + response;
+            Serial.printf("[LLM] HTTP error: %d\n", httpCode);
+            return "Error: Request failed";
         }
     } else {
-        String errorMsg = http.errorToString(httpCode);
         http.end();
-        return "Error: API request failed: " + errorMsg;
+        Serial.println("[LLM] Connection failed");
+        return "Error: Connection failed";
     }
 }
 
@@ -341,47 +339,37 @@ String LLMManager::getToolDescriptions() {
 }
 
 // 处理 LLM 的原始响应，解析工具调用或自然语言回复。
-void LLMManager::handleLLMRawResponse(const String& requestId, const String& llmRawResponse) {
-    // 如果 USB Shell 不可用，则将响应发送到 Web UI 队列
-    if (!_usbShellManager) {
-        LLMResponse response;
-        response.requestId = requestId;
-        response.response = llmRawResponse;
-        if (xQueueSend(llmResponseQueue, &response, 0) != pdPASS) {
-            Serial.println("handleLLMRawResponse: Failed to send response to queue for Web UI.");
-        }
-        return;
-    }
+void LLMManager::handleLLMRawResponse(const String& requestId, const String& llmContentString) {
+    LLMResponse response;
+    response.requestId = requestId;
+    response.isToolCall = false; // Default to natural language
 
-    // 首先尝试检查这是否是纯文本响应
-    if (!llmRawResponse.startsWith("{") && !llmRawResponse.startsWith("[")) {
-        // 如果是纯文本响应，直接发送
-        _usbShellManager->sendAiResponseToHost(requestId, llmRawResponse);
-        return;
-    }
-
-    // 如果是JSON响应，则进行解析
-    JsonDocument responseDoc;
-    DeserializationError error = deserializeJson(responseDoc, llmRawResponse);
+    JsonDocument contentDoc;
+    DeserializationError error = deserializeJson(contentDoc, llmContentString);
 
     if (error) {
-        Serial.print(F("handleLLMRawResponse deserializeJson() failed: "));
-        Serial.println(error.f_str());
-        Serial.printf("Raw response was: %s\n", llmRawResponse.c_str());
-        _usbShellManager->sendAiResponseToHost(requestId, "Error: Failed to parse JSON response");
-        return;
-    }
-
-    // 检查响应是否为工具调用
-    if (responseDoc["tool_calls"].is<JsonArray>()) {
-        JsonArray toolCalls = responseDoc["tool_calls"].as<JsonArray>();
-        if (toolCalls.size() > 0) {
-            JsonObject toolCall = toolCalls[0].as<JsonObject>();
+        // If parsing as JSON fails, it's a natural language response
+        Serial.printf("handleLLMRawResponse: Content is natural language or invalid JSON. Error: %s\n", error.c_str());
+        Serial.printf("Natural language response: %s\n", llmContentString.c_str());
+        _usbShellManager->sendAiResponseToHost(requestId, llmContentString);
+        response.naturalLanguageResponse = llmContentString;
+    } else {
+        // Successfully parsed as JSON, now check for tool calls
+        if (contentDoc["tool_calls"].is<JsonArray>() && contentDoc["tool_calls"].size() > 0) {
+            JsonObject toolCall = contentDoc["tool_calls"][0].as<JsonObject>();
             String toolName = toolCall["name"] | "";
 
-            if (toolName == "sendtoshell") { // Our unified tool
+            if (toolName == "sendtoshell") {
                 String outputType = toolCall["args"]["type"] | "";
                 String value = toolCall["args"]["value"] | "";
+
+                response.isToolCall = true;
+                response.toolName = toolName;
+                
+                JsonDocument argsDoc;
+                argsDoc["type"] = outputType;
+                argsDoc["value"] = value;
+                serializeJson(argsDoc, response.toolArgs);
 
                 if (outputType == "command") {
                     Serial.printf("LLM requested shell command: %s\n", value.c_str());
@@ -392,22 +380,26 @@ void LLMManager::handleLLMRawResponse(const String& requestId, const String& llm
                 } else {
                     Serial.printf("LLM called sendtoshell with unknown output_type: %s\n", outputType.c_str());
                     _usbShellManager->sendAiResponseToHost(requestId, "Error: LLM called sendtoshell with unknown output type.");
+                    response.naturalLanguageResponse = "Error: LLM called sendtoshell with unknown output type.";
+                    response.isToolCall = false;
                 }
             } else {
                 Serial.printf("LLM called unknown tool: %s\n", toolName.c_str());
                 _usbShellManager->sendAiResponseToHost(requestId, "Error: LLM called an unknown tool: " + toolName);
+                response.naturalLanguageResponse = "Error: LLM called an unknown tool: " + toolName;
+                response.isToolCall = false;
             }
         } else {
-            // No tool calls, treat as natural language response
-            String content = responseDoc["choices"][0]["message"]["content"] | llmRawResponse;
-            Serial.printf("LLM natural language response (no tool calls): %s\n", content.c_str());
-            _usbShellManager->sendAiResponseToHost(requestId, content);
+            // Parsed as JSON, but no tool_calls, so treat the original string as natural language
+            Serial.println("handleLLMRawResponse: Parsed as JSON but no tool_calls. Treating as natural language.");
+            Serial.printf("Natural language response: %s\n", llmContentString.c_str());
+            _usbShellManager->sendAiResponseToHost(requestId, llmContentString);
+            response.naturalLanguageResponse = llmContentString;
         }
-    } else {
-        // No tool_calls field, treat as natural language response
-        String content = responseDoc["choices"][0]["message"]["content"] | llmRawResponse;
-        Serial.printf("LLM natural language response (no tool_calls field): %s\n", content.c_str());
-        _usbShellManager->sendAiResponseToHost(requestId, content);
+    }
+
+    if (xQueueSend(llmResponseQueue, &response, 0) != pdPASS) {
+        Serial.println("handleLLMRawResponse: Failed to send structured response to queue for Web UI.");
     }
 }
 
@@ -421,10 +413,10 @@ void LLMManager::loop() {
         Serial.printf("LLMTask: Received request for prompt: %s (requestId: %s)\n", request.prompt.c_str(), request.requestId.c_str());
         
         // 调用核心函数生成响应
-        llmRawResponse = generateResponse(request.requestId, request.prompt, request.mode);
-        Serial.printf("LLMTask: Generated raw response: %s\n", llmRawResponse.c_str());
+        String llmContent = generateResponse(request.requestId, request.prompt, request.mode);
+        Serial.printf("LLMTask: Generated content: %s\n", llmContent.c_str());
 
         // 处理LLM的原始响应，解析工具调用或自然语言回复
-        handleLLMRawResponse(request.requestId, llmRawResponse);
+        handleLLMRawResponse(request.requestId, llmContent);
     }
 }

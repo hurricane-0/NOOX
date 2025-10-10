@@ -25,7 +25,7 @@ bool ConfigManager::loadConfig() {
 
         // DeepSeek LLM 提供商配置
         JsonObject deepseek = configDoc["llm_providers"]["deepseek"].to<JsonObject>();
-        deepseek["api_key"] = ""; // DeepSeek API 密钥
+        deepseek["api_key"] = "sk-3f54327d09514e21868e78aca13730dd"; // DeepSeek API 密钥
         deepseek["models"].add("deepseek-chat");     // DeepSeek 聊天模型
         deepseek["models"].add("deepseek-reasoner"); // DeepSeek 推理模型
 

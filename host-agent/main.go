@@ -1,3 +1,5 @@
+// NOOX 主机代理程序
+// 该程序负责与 ESP32-S3 设备通过 CDC 串口进行通信，实现Shell命令执行和AI交互功能
 package main
 
 import (
@@ -19,50 +21,56 @@ import (
 	serial_enumerator "go.bug.st/serial/enumerator"
 )
 
-// JSON message structures for communication with ESP32
-// New struct for shell output payload
+// 以下是与 ESP32 通信所使用的 JSON 消息结构体定义
+// Shell命令输出的负载结构体
+// 包含命令本身、标准输出、标准错误、执行状态和退出码
 type ShellOutputPayload struct {
-	Command  string `json:"command,omitempty"`
-	Stdout   string `json:"stdout,omitempty"`
-	Stderr   string `json:"stderr,omitempty"`
-	Status   string `json:"status,omitempty"`
-	ExitCode int    `json:"exitCode,omitempty"`
+	Command  string `json:"command,omitempty"`  // 执行的命令
+	Stdout   string `json:"stdout,omitempty"`   // 标准输出
+	Stderr   string `json:"stderr,omitempty"`   // 标准错误
+	Status   string `json:"status,omitempty"`   // 执行状态
+	ExitCode int    `json:"exitCode,omitempty"` // 命令退出码
 }
 
-// Modified HostMessage struct for flexible payloads
+// 主机发送给 ESP32 的通用消息结构体
+// 使用 interface{} 作为 Payload 以支持不同类型的负载
 type HostMessage struct {
-	RequestId string      `json:"requestId"`
-	Type      string      `json:"type"`
+	RequestId string      `json:"requestId"` // 请求ID，用于跟踪消息
+	Type      string      `json:"type"`      // 消息类型
 	Payload   interface{} `json:"payload,omitempty"`
 }
 
-// New struct for connectToWifi payload
+// WiFi连接请求的负载结构体
 type ConnectToWifiPayload struct {
-	SSID     string `json:"ssid"`
-	Password string `json:"password"`
+	SSID     string `json:"ssid"`     // WiFi名称
+	Password string `json:"password"` // WiFi密码
 }
 
+// ESP32 响应的消息结构体
 type ESP32Response struct {
-	RequestId string      `json:"requestId"`
-	Type      string      `json:"type"`
+	RequestId string      `json:"requestId"` // 对应请求的ID
+	Type      string      `json:"type"`      // 响应类型
 	Payload   interface{} `json:"payload,omitempty"`
-	Status    string      `json:"status,omitempty"`
-	Content   string      `json:"content,omitempty"`
+	Status    string      `json:"status,omitempty"`  // 响应状态
+	Content   string      `json:"content,omitempty"` // 响应内容
 }
 
 var (
-	serialPort serial.Port
-	portName   string
-	mu         sync.Mutex
-	wifiStatus string
+	serialPort serial.Port // 串口通信接口
+	portName   string      // 串口设备名称
+	mu         sync.Mutex  // 串口写入互斥锁
+	wifiStatus string      // WiFi连接状态
 )
 
+// 初始化函数，设置命令行参数
 func init() {
+	// 添加 wifi-status 命令行参数，用于指定 ESP32 的初始 WiFi 状态
 	flag.StringVar(&wifiStatus, "wifi-status", "unknown", "Initial WiFi status from ESP32 (connected/disconnected/unknown)")
 }
 
+// 主函数
 func main() {
-	flag.Parse()
+	flag.Parse() // 解析命令行参数
 	log.Println("NOOX Host Agent starting...")
 	log.Printf("Initial WiFi Status from ESP32: %s", wifiStatus)
 
@@ -86,9 +94,12 @@ func generateUUID() string {
 	return uuid.New().String()
 }
 
+// 执行初始设备设置
+// 包括通信测试和WiFi连接状态检查
 func performInitialDeviceSetup() {
 	log.Println("Performing initial device setup...")
 
+	// 发送链路测试请求
 	linkTestReq := HostMessage{
 		RequestId: generateUUID(),
 		Type:      "linkTest",
@@ -96,8 +107,11 @@ func performInitialDeviceSetup() {
 	}
 	sendToESP32(linkTestReq)
 
+	// 等待一秒以确保链路测试完成
 	time.Sleep(1 * time.Second)
 
+	// 检查WiFi连接状态
+	// 如果未连接，尝试获取主机WiFi信息并发送给ESP32
 	if wifiStatus == "disconnected" {
 		log.Println("ESP32 reported WiFi disconnected. Attempting to get host WiFi info and send to ESP32.")
 		ssid, password, err := getWifiInfoFromHost()
@@ -126,12 +140,17 @@ func getWifiInfoFromHost() (ssid, password string, err error) {
 	return "MyHomeNetwork", "MyWiFiPassword", nil
 }
 
+// 连接到ESP32设备
+// 该函数会枚举所有串口设备，查找并连接到ESP32-S3的CDC串口
 func connectToESP32() error {
+	// 获取系统中所有串口设备的详细信息
 	ports, err := serial_enumerator.GetDetailedPortsList()
 	if err != nil {
 		return fmt.Errorf("failed to enumerate serial ports: %w", err)
 	}
 
+	// 遍历所有串口，查找ESP32-S3设备
+	// 通过设备名称、产品描述或VID来识别目标设备
 	for _, p := range ports {
 		if strings.Contains(p.Product, "ESP32-S3") || strings.Contains(p.Product, "USB Serial Device") || strings.Contains(p.VID, "303A") {
 			log.Printf("Found potential ESP32-S3: %s (%s)", p.Name, p.Product)
@@ -140,6 +159,7 @@ func connectToESP32() error {
 		}
 	}
 
+	// 如果没有找到合适的设备，返回错误
 	if portName == "" {
 		return fmt.Errorf("no ESP32-S3 CDC serial port found. Please ensure the device is connected and drivers are installed.")
 	}
@@ -158,9 +178,12 @@ func connectToESP32() error {
 	return nil
 }
 
+// 从ESP32读取数据的后台协程
+// 持续监听串口数据，解析JSON消息并处理响应
 func readFromESP32() {
 	reader := bufio.NewReader(serialPort)
 	for {
+		// 按行读取串口数据（以换行符为分隔）
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			if err != io.EOF {
@@ -168,11 +191,14 @@ func readFromESP32() {
 			}
 			return
 		}
+
+		// 去除行首尾的空白字符
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
 
+		// 将收到的JSON数据解析为ESP32Response结构体
 		var espResponse ESP32Response
 		err = json.Unmarshal([]byte(line), &espResponse)
 		if err != nil {
@@ -181,14 +207,18 @@ func readFromESP32() {
 			continue
 		}
 
+		// 处理解析后的响应消息
 		handleESP32Response(espResponse)
 	}
 }
 
+// 处理来自ESP32的响应消息
+// 根据消息类型执行相应的操作：执行Shell命令、显示AI回复等
 func handleESP32Response(resp ESP32Response) {
 	switch resp.Type {
 	case "shellCommand":
-		// Payload is the command string
+		// 处理Shell命令请求
+		// Payload应该是一个需要在本地执行的命令字符串
 		command, ok := resp.Payload.(string)
 		if !ok {
 			log.Printf("Error: shellCommand payload is not a string: %v", resp.Payload)
@@ -197,7 +227,8 @@ func handleESP32Response(resp ESP32Response) {
 		fmt.Printf("[NOOX Shell] Executing: %s\n", command)
 		executeLocalShellCommand(command)
 	case "aiResponse":
-		// Payload is the AI response string
+		// 处理AI回复消息
+		// Payload应该是AI生成的回复文本
 		aiResponse, ok := resp.Payload.(string)
 		if !ok {
 			log.Printf("Error: aiResponse payload is not a string: %v", resp.Payload)
@@ -237,35 +268,47 @@ func handleESP32Response(resp ESP32Response) {
 	}
 }
 
+// 从标准输入读取用户输入的后台协程
+// 将用户输入转发给ESP32设备
 func readFromStdin() {
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
+		// 获取用户输入
 		input := scanner.Text()
 		if input == "" {
 			continue
 		}
 
+		// 构造用户输入消息并发送给ESP32
 		msg := HostMessage{
-			RequestId: generateUUID(),
-			Type:      "userInput",
-			Payload:   input,
+			RequestId: generateUUID(), // 生成唯一的请求ID
+			Type:      "userInput",    // 消息类型为用户输入
+			Payload:   input,          // 消息内容为用户输入的文本
 		}
 		sendToESP32(msg)
 	}
+
+	// 处理可能的扫描错误
 	if err := scanner.Err(); err != nil {
 		log.Printf("Error reading from stdin: %v", err)
 	}
 }
 
+// 在本地执行Shell命令
+// 根据操作系统类型选择合适的Shell，执行命令并收集输出结果
 func executeLocalShellCommand(command string) {
 	var cmd *exec.Cmd
 
+	// 根据操作系统选择合适的Shell
 	if os.Getenv("OS") == "Windows_NT" {
+		// Windows系统使用cmd.exe
 		cmd = exec.Command("cmd", "/C", command)
 	} else {
+		// Unix类系统使用bash
 		cmd = exec.Command("bash", "-c", command)
 	}
 
+	// 创建用于捕获命令输出的缓冲区
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -301,16 +344,22 @@ func executeLocalShellCommand(command string) {
 	sendToESP32(hostMsg)
 }
 
+// 向ESP32发送消息
+// 将消息结构体转换为JSON格式并通过串口发送
+// 使用互斥锁确保串口写入的线程安全
 func sendToESP32(msg HostMessage) {
+	// 将消息转换为JSON格式
 	jsonData, err := json.Marshal(msg)
 	if err != nil {
 		log.Printf("Error marshalling host message: %v", err)
 		return
 	}
 
+	// 获取互斥锁，确保串口写入的线程安全
 	mu.Lock()
 	defer mu.Unlock()
 
+	// 发送JSON数据，并在末尾添加换行符
 	_, err = serialPort.Write(append(jsonData, '\n'))
 	if err != nil {
 		log.Printf("Error writing to serial port: %v", err)

@@ -50,31 +50,27 @@ void WebManager::loop() {
 
     LLMResponse response;
     if (xQueueReceive(llmManager.llmResponseQueue, &response, 0) == pdPASS) {
-        JsonDocument llmResponseDoc;
-        DeserializationError llmError = deserializeJson(llmResponseDoc, response.response);
+        JsonDocument responseDoc;
+        String responseStr;
 
-        if (!llmError && llmResponseDoc["mode"].as<String>() == "advanced" &&
-            llmResponseDoc["action"]["type"].as<String>() == "tool_call") {
-            
-            String toolName = llmResponseDoc["action"]["tool_name"].as<String>();
-            JsonObject toolParams = llmResponseDoc["action"]["parameters"].as<JsonObject>();
-            String taskResult = taskManager.executeTool(toolName, toolParams);
-            
-            JsonDocument responseDoc;
-            responseDoc["type"] = "tool_execution_result";
-            responseDoc["tool_name"] = toolName;
-            responseDoc["result"] = taskResult;
-            
-            String responseStr;
+        if (response.isToolCall) {
+            responseDoc["type"] = "tool_call";
+            responseDoc["tool_name"] = response.toolName;
+            // toolArgs is already a JSON string, so parse it back to JsonObject
+            JsonDocument argsDoc;
+            DeserializationError argsError = deserializeJson(argsDoc, response.toolArgs);
+            if (!argsError) {
+                responseDoc["tool_args"] = argsDoc.as<JsonObject>();
+            } else {
+                Serial.printf("WebManager: Failed to parse toolArgs JSON: %s\n", argsError.c_str());
+                responseDoc["tool_args"] = response.toolArgs; // Send as raw string if parsing fails
+            }
             serializeJson(responseDoc, responseStr);
             broadcast(responseStr);
-
         } else {
-            JsonDocument responseDoc;
             responseDoc["type"] = "chat_message";
             responseDoc["sender"] = "bot";
-            responseDoc["text"] = response.response;
-            String responseStr;
+            responseDoc["text"] = response.naturalLanguageResponse;
             serializeJson(responseDoc, responseStr);
             broadcast(responseStr);
         }

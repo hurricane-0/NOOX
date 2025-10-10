@@ -50,7 +50,10 @@ struct LLMRequest {
  */
 struct LLMResponse {
     String requestId;           ///< 请求ID，用于关联响应
-    String response; ///< LLM 生成的原始响应字符串
+    bool isToolCall;            ///< 指示响应是否为工具调用
+    String toolName;            ///< 如果是工具调用，则为工具名称
+    String toolArgs;            ///< 如果是工具调用，则为工具参数的JSON字符串
+    String naturalLanguageResponse; ///< 如果是自然语言回复，则为回复内容
 };
 
 /**
@@ -158,9 +161,9 @@ private:
     /**
      * @brief 处理 LLM 的原始响应，解析工具调用或自然语言回复。
      * @param requestId 请求ID。
-     * @param llmRawResponse LLM 返回的原始 JSON 字符串。
+     * @param llmContentString LLM 返回的原始 JSON 字符串。
      */
-    void handleLLMRawResponse(const String& requestId, const String& llmRawResponse);
+    void handleLLMRawResponse(const String& requestId, const String& llmContentString);
 };
 
 #endif // LLM_MANAGER_H
