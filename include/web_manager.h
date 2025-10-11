@@ -55,6 +55,7 @@ private:
     AsyncWebSocket ws;
     LLMMode currentLLMMode;
     bool configUpdatePending = false;
+    bool needReinitManagers = false;
     JsonDocument pendingConfigDoc;
 
     /**

@@ -47,13 +47,23 @@ struct LLMRequest {
 
 /**
  * @brief 定义从 LLM 任务队列接收的响应结构体。
+ * 使用固定长度字符数组替代String，避免动态内存分配导致的堆损坏问题。
  */
 struct LLMResponse {
-    String requestId;           ///< 请求ID，用于关联响应
-    bool isToolCall;            ///< 指示响应是否为工具调用
-    String toolName;            ///< 如果是工具调用，则为工具名称
-    String toolArgs;            ///< 如果是工具调用，则为工具参数的JSON字符串
-    String naturalLanguageResponse; ///< 如果是自然语言回复，则为回复内容
+    char requestId[64];                 ///< 请求ID，用于关联响应
+    bool isToolCall;                    ///< 指示响应是否为工具调用
+    char toolName[64];                  ///< 如果是工具调用，则为工具名称
+    char toolArgs[512];                 ///< 如果是工具调用，则为工具参数的JSON字符串
+    char naturalLanguageResponse[1024]; ///< 如果是自然语言回复，则为回复内容
+    
+    // 构造函数，初始化所有字段
+    LLMResponse() {
+        memset(requestId, 0, sizeof(requestId));
+        isToolCall = false;
+        memset(toolName, 0, sizeof(toolName));
+        memset(toolArgs, 0, sizeof(toolArgs));
+        memset(naturalLanguageResponse, 0, sizeof(naturalLanguageResponse));
+    }
 };
 
 /**

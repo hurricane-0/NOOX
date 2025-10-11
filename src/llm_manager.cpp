@@ -8,6 +8,9 @@
 const size_t JSON_DOC_SIZE = 262144; // 为可能更大的LLM响应增加了大小，并利用PSRAM
 const size_t MAX_RESPONSE_LENGTH = JSON_DOC_SIZE; // Maximum expected response length
 
+// 定义静态响应缓冲区，避免动态内存分配
+static char responseBuffer[1024];
+
 // 用于配置网络超时的常量
 const unsigned long NETWORK_TIMEOUT = 20000;  // 20秒
 const unsigned long STREAM_TIMEOUT = 20000;   // 流读取超时20秒
@@ -340,83 +343,148 @@ String LLMManager::getToolDescriptions() {
 
 // 处理 LLM 的原始响应，解析工具调用或自然语言回复。
 void LLMManager::handleLLMRawResponse(const String& requestId, const String& llmContentString) {
-    LLMResponse response;
-    response.requestId = requestId;
-    response.isToolCall = false; // Default to natural language
+    // 创建静态缓冲区，避免动态内存分配
+    static char responseBuffer[1024];
+    static char requestIdBuffer[64];
+    static char valueBuffer[1024];
+    
+    // 清空缓冲区
+    memset(responseBuffer, 0, sizeof(responseBuffer));
+    memset(requestIdBuffer, 0, sizeof(requestIdBuffer));
+    memset(valueBuffer, 0, sizeof(valueBuffer));
+    
+    // 安全地复制requestId到静态缓冲区
+    if (requestId.c_str() != nullptr) {
+        strlcpy(requestIdBuffer, requestId.c_str(), sizeof(requestIdBuffer));
+    }
+    
+    try {
+        // 使用静态分配的JsonDocument，避免堆分配
+        StaticJsonDocument<8192> contentDoc;
+        DeserializationError error = deserializeJson(contentDoc, llmContentString);
 
-    JsonDocument contentDoc;
-    DeserializationError error = deserializeJson(contentDoc, llmContentString);
-
-    if (error) {
-        // If parsing as JSON fails, it's a natural language response
-        Serial.printf("handleLLMRawResponse: Content is natural language or invalid JSON. Error: %s\n", error.c_str());
-        Serial.printf("Natural language response: %s\n", llmContentString.c_str());
-        _usbShellManager->sendAiResponseToHost(requestId, llmContentString);
-        response.naturalLanguageResponse = llmContentString;
-    } else {
-        // Successfully parsed as JSON, now check for tool calls
-        if (contentDoc["tool_calls"].is<JsonArray>() && contentDoc["tool_calls"].size() > 0) {
-            JsonObject toolCall = contentDoc["tool_calls"][0].as<JsonObject>();
-            String toolName = toolCall["name"] | "";
-
-            if (toolName == "sendtoshell") {
-                String outputType = toolCall["args"]["type"] | "";
-                String value = toolCall["args"]["value"] | "";
-
-                response.isToolCall = true;
-                response.toolName = toolName;
-                
-                JsonDocument argsDoc;
-                argsDoc["type"] = outputType;
-                argsDoc["value"] = value;
-                serializeJson(argsDoc, response.toolArgs);
-
-                if (outputType == "command") {
-                    Serial.printf("LLM requested shell command: %s\n", value.c_str());
-                    _usbShellManager->sendShellCommandToHost(requestId, value);
-                } else if (outputType == "text") {
-                    Serial.printf("LLM requested AI response: %s\n", value.c_str());
-                    _usbShellManager->sendAiResponseToHost(requestId, value);
-                } else {
-                    Serial.printf("LLM called sendtoshell with unknown output_type: %s\n", outputType.c_str());
-                    _usbShellManager->sendAiResponseToHost(requestId, "Error: LLM called sendtoshell with unknown output type.");
-                    response.naturalLanguageResponse = "Error: LLM called sendtoshell with unknown output type.";
-                    response.isToolCall = false;
-                }
+        if (error) {
+            // If parsing as JSON fails, it's a natural language response
+            Serial.printf("handleLLMRawResponse: Content is natural language or invalid JSON. Error: %s\n", error.c_str());
+            
+            // 安全地复制响应到静态缓冲区
+            strlcpy(valueBuffer, llmContentString.c_str(), sizeof(valueBuffer));
+            Serial.printf("Natural language response: %s\n", valueBuffer);
+            
+            // 确保字符串不为空再发送
+            if (strlen(valueBuffer) > 0) {
+                _usbShellManager->sendAiResponseToHost(requestIdBuffer, valueBuffer);
             } else {
-                Serial.printf("LLM called unknown tool: %s\n", toolName.c_str());
-                _usbShellManager->sendAiResponseToHost(requestId, "Error: LLM called an unknown tool: " + toolName);
-                response.naturalLanguageResponse = "Error: LLM called an unknown tool: " + toolName;
-                response.isToolCall = false;
+                _usbShellManager->sendAiResponseToHost(requestIdBuffer, "Error: Empty response from LLM.");
             }
         } else {
-            // Parsed as JSON, but no tool_calls, so treat the original string as natural language
-            Serial.println("handleLLMRawResponse: Parsed as JSON but no tool_calls. Treating as natural language.");
-            Serial.printf("Natural language response: %s\n", llmContentString.c_str());
-            _usbShellManager->sendAiResponseToHost(requestId, llmContentString);
-            response.naturalLanguageResponse = llmContentString;
+            // Successfully parsed as JSON, now check for tool calls
+            if (contentDoc["tool_calls"].is<JsonArray>() && contentDoc["tool_calls"].size() > 0) {
+                JsonObject toolCall = contentDoc["tool_calls"][0].as<JsonObject>();
+                
+                // 使用静态缓冲区存储工具名称
+                const char* toolNamePtr = toolCall["name"] | "";
+                
+                if (strcmp(toolNamePtr, "sendtoshell") == 0) {
+                    const char* outputTypePtr = toolCall["args"]["type"] | "";
+                    const char* valuePtr = toolCall["args"]["value"] | "";
+                    
+                    // 安全地复制值到静态缓冲区
+                    strlcpy(valueBuffer, valuePtr, sizeof(valueBuffer));
+
+                    if (strcmp(outputTypePtr, "command") == 0) {
+                        // 发送命令到主机
+                        Serial.printf("LLM requested shell command: %s\n", valueBuffer);
+                        _usbShellManager->sendShellCommandToHost(requestIdBuffer, valueBuffer);
+                    } else if (strcmp(outputTypePtr, "text") == 0) {
+                        // 发送自然语言回复到主机
+                        Serial.printf("LLM requested AI response: %s\n", valueBuffer);
+                        _usbShellManager->sendAiResponseToHost(requestIdBuffer, valueBuffer);
+                    } else {
+                        Serial.printf("LLM called sendtoshell with unknown output_type: %s\n", outputTypePtr);
+                        _usbShellManager->sendAiResponseToHost(requestIdBuffer, "Error: LLM called sendtoshell with unknown output type.");
+                    }
+                } else {
+                    // 未知的工具调用
+                    Serial.printf("LLM called unknown tool: %s\n", toolNamePtr);
+                    
+                    // 使用snprintf安全地格式化错误消息
+                    snprintf(responseBuffer, sizeof(responseBuffer), "Error: LLM called an unknown tool: %s", toolNamePtr);
+                    _usbShellManager->sendAiResponseToHost(requestIdBuffer, responseBuffer);
+                }
+            } else {
+                // Parsed as JSON, but no tool_calls, so treat as natural language
+                Serial.println("handleLLMRawResponse: Parsed as JSON but no tool_calls. Treating as natural language.");
+                
+                // 安全地复制响应到静态缓冲区
+                strlcpy(valueBuffer, llmContentString.c_str(), sizeof(valueBuffer));
+                Serial.printf("Natural language response: %s\n", valueBuffer);
+                
+                _usbShellManager->sendAiResponseToHost(requestIdBuffer, valueBuffer);
+            }
         }
+    } catch (const std::exception& e) {
+        // 捕获任何可能的异常
+        Serial.printf("Exception in handleLLMRawResponse: %s\n", e.what());
+        _usbShellManager->sendAiResponseToHost(requestIdBuffer, "Error: Exception occurred while processing LLM response.");
+    } catch (...) {
+        // 捕获任何未知异常
+        Serial.println("Unknown exception in handleLLMRawResponse");
+        _usbShellManager->sendAiResponseToHost(requestIdBuffer, "Error: Unknown exception while processing LLM response.");
     }
 
-    if (xQueueSend(llmResponseQueue, &response, 0) != pdPASS) {
-        Serial.println("handleLLMRawResponse: Failed to send structured response to queue for Web UI.");
-    }
+    // 手动触发垃圾回收
+    ESP.getFreeHeap();
+    
+    // 确保在函数结束前所有临时对象都被正确释放
+    Serial.println("handleLLMRawResponse: Processing completed successfully");
+    
+    // 再次手动触发垃圾回收
+    ESP.getFreeHeap();
 }
 
 // LLM aysnc loop
 void LLMManager::loop() {
-    LLMRequest request;   // 用于存储接收到的请求
-    String llmRawResponse; // 用于存储生成的原始响应
+    static LLMRequest request;   // 使用静态变量，避免栈上分配
+    static char promptBuffer[1024];  // 静态缓冲区存储prompt
+    static char requestIdBuffer[64]; // 静态缓冲区存储requestId
 
     // 检查队列中是否有请求，非阻塞
     if (xQueueReceive(llmRequestQueue, &request, 0) == pdPASS) {
-        Serial.printf("LLMTask: Received request for prompt: %s (requestId: %s)\n", request.prompt.c_str(), request.requestId.c_str());
+        // 清空静态缓冲区
+        memset(promptBuffer, 0, sizeof(promptBuffer));
+        memset(requestIdBuffer, 0, sizeof(requestIdBuffer));
+        
+        // 安全地复制字符串到静态缓冲区
+        if (request.prompt.c_str() != nullptr) {
+            strlcpy(promptBuffer, request.prompt.c_str(), sizeof(promptBuffer));
+        }
+        if (request.requestId.c_str() != nullptr) {
+            strlcpy(requestIdBuffer, request.requestId.c_str(), sizeof(requestIdBuffer));
+        }
+        
+        Serial.printf("LLMTask: Received request for prompt: %s (requestId: %s)\n", promptBuffer, requestIdBuffer);
         
         // 调用核心函数生成响应
         String llmContent = generateResponse(request.requestId, request.prompt, request.mode);
+        
+        // 手动触发垃圾回收
+        ESP.getFreeHeap();
+        
         Serial.printf("LLMTask: Generated content: %s\n", llmContent.c_str());
 
         // 处理LLM的原始响应，解析工具调用或自然语言回复
         handleLLMRawResponse(request.requestId, llmContent);
+        
+        // 手动触发垃圾回收
+        ESP.getFreeHeap();
+        
+        // 清空String对象
+        request.prompt = "";
+        request.requestId = "";
+        llmContent = "";
+        
+        // 再次手动触发垃圾回收
+        ESP.getFreeHeap();
     }
 }

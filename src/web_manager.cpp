@@ -32,20 +32,75 @@ void WebManager::loop() {
     // Handle pending configuration updates
     if (configUpdatePending) {
         Serial.println("Processing pending configuration update...");
-        JsonDocument& doc = configManager.getConfig();
-        doc.clear();
-        doc.set(pendingConfigDoc); // Apply the pending config
-
-        if (configManager.saveConfig()) {
-            Serial.println("Configuration saved successfully.");
-            broadcast("{\"type\":\"config_update_status\", \"status\":\"success\", \"message\":\"Configuration saved and applied.\"}");
-            llmManager.begin(); // Re-initialize managers with new config
-            wifiManager.begin(); // For WiFi, we might want to connect to the new "last_used" one
+        
+        // 使用更小的静态文档，减少堆栈使用
+        static StaticJsonDocument<2048> tempDoc;
+        tempDoc.clear();
+        
+        // 创建一个任务来处理配置更新，避免在WebTask堆栈中处理
+        xTaskCreate(
+            [](void* arg) {
+                WebManager* self = (WebManager*)arg;
+                
+                // 在新任务中处理配置更新
+                try {
+                    // 获取配置文档引用并更新
+                    JsonDocument& doc = self->configManager.getConfig();
+                    doc.clear();
+                    
+                    // 逐个字段复制，避免一次性大量内存操作
+                    for (JsonPair kv : self->pendingConfigDoc.as<JsonObject>()) {
+                        doc[kv.key()] = kv.value();
+                    }
+                    
+                    if (self->configManager.saveConfig()) {
+                        Serial.println("Configuration saved successfully.");
+                        self->broadcast("{\"type\":\"config_update_status\", \"status\":\"success\", \"message\":\"Configuration saved and applied.\"}");
+                        self->needReinitManagers = true;
+                    } else {
+                        Serial.println("Failed to save configuration.");
+                        self->broadcast("{\"type\":\"config_update_status\", \"status\":\"error\", \"message\":\"Failed to save configuration.\"}");
+                    }
+                } catch (...) {
+                    Serial.println("Exception in config update task");
+                    self->broadcast("{\"type\":\"config_update_status\", \"status\":\"error\", \"message\":\"Exception during configuration update.\"}");
+                }
+                
+                // 清理内存并重置标志
+                self->pendingConfigDoc.clear();
+                self->configUpdatePending = false;
+                
+                // 手动触发垃圾回收
+                ESP.getFreeHeap();
+                
+                // 删除任务
+                vTaskDelete(NULL);
+            },
+            "ConfigUpdate",  // 任务名称
+            8192,           // 堆栈大小
+            this,           // 传递this指针作为参数
+            1,              // 优先级
+            NULL            // 任务句柄
+        );
+        
+        // 立即重置标志，避免重复创建任务
+        configUpdatePending = false;
+    }
+    
+    // 如果需要重新初始化管理器，在当前循环中执行
+    if (needReinitManagers) {
+        // 使用更小的延迟，避免堆栈溢出
+        static uint8_t reinitCounter = 0;
+        
+        // 分两个循环完成初始化，避免一次性调用过多函数
+        if (reinitCounter == 0) {
+            llmManager.begin(); // 先初始化LLM管理器
+            reinitCounter = 1;
         } else {
-            Serial.println("Failed to save configuration.");
-            broadcast("{\"type\":\"config_update_status\", \"status\":\"error\", \"message\":\"Failed to save configuration.\"}");
+            wifiManager.begin(); // 再初始化WiFi管理器
+            reinitCounter = 0;
+            needReinitManagers = false;
         }
-        configUpdatePending = false; // Reset flag
     }
 
     LLMResponse response;
