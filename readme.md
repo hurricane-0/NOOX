@@ -251,29 +251,6 @@ Arduino Framework • PlatformIO • LittleFS • FreeRTOS • U8g2 • FastLED 
 
 **开源库**: [ESP32 Arduino](https://github.com/espressif/arduino-esp32) • [PlatformIO](https://platformio.org/) • [U8g2](https://github.com/olikraus/u8g2) • [FastLED](https://github.com/FastLED/FastLED) • [ESPAsyncWebServer](https://github.com/me-no-dev/ESPAsyncWebServer) • [ArduinoJson](https://arduinojson.org/)
 
-**LLM 提供商**: [DeepSeek](https://www.deepseek.com/) • [OpenRouter](https://openrouter.ai/) • [OpenAI](https://openai.com/)
-
----
-
-## 📞 联系方式
-
-- 项目主页: https://github.com/your-repo/NOOX
-- 问题反馈: https://github.com/your-repo/NOOX/issues
-- 讨论区: https://github.com/your-repo/NOOX/discussions
-
----
-
-## 📜 许可证
-
-本项目采用 **MIT 许可证**。详见 [LICENSE](LICENSE) 文件。
-
----
-
-<p align="center">
-  <strong>用 ❤️ 和 🤖 构建</strong>
-  <br>
-  <sub>NOOX - 让 AI 触手可及</sub>
-</p>
 
 <p align="center">
   如果这个项目对您有帮助，请给我们一个 ⭐️
