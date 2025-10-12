@@ -189,20 +189,6 @@ Arduino Framework • PlatformIO • LittleFS • FreeRTOS • U8g2 • FastLED 
 
 欢迎贡献代码、报告问题或提出建议！
 
-### 快速贡献
-
-1. Fork 本仓库
-2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'feat: 添加某功能'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 开启 Pull Request
-
-### 代码规范
-
-- 使用 4 空格缩进
-- 遵循 Arduino 代码风格
-- 使用 [Conventional Commits](https://www.conventionalcommits.org/) 提交规范
-- 确保代码可编译且在硬件上测试通过
 
 ---
 
