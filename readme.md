@@ -1,133 +1,280 @@
-## 本项目使用cline（Gemini2.5 flash）辅助开发
-## 项目概述
+# NOOX - ESP32-S3 智能 AI 助手平台
 
-基于 ESP32-S3 的智能硬件平台，集成大规模语言模型（LLM）能力，提供“对话模式”和“高级模式”两种工作状态。设备可通过网页界面与LLM通信，LLM通过USB HID与PC交互，OLED UI显示基本信息。
+<p align="center">
+  <strong>基于 ESP32-S3 的智能硬件平台，集成大语言模型能力</strong>
+</p>
 
----
+<p align="center">
+  <a href="#特性">特性</a> •
+  <a href="#快速开始">快速开始</a> •
+  <a href="#文档">文档</a> •
+  <a href="#硬件">硬件</a> •
+  <a href="#贡献">贡献</a>
+</p>
 
-## 1. 功能模块
-
-### 1.1 通信与交互
-
-- **嵌入式 Web 服务器**：运行于 ESP32-S3，托管静态资源（HTML/CSS/JS），构建响应式用户界面。
-
-- **WebSocket 服务器**：提供实时、双向通信通道，实现移动端网页与设备的数据交互。
-
-- **OLED 与按键接口**：图形化 GUI 结合三枚按键，用于显示设备状态、LLM模式、当前连接的WiFi信息（SSID和IP）、LLM模型名称、内存占用，并提供菜单导航和功能操作。
-
-### 1.2 人工智能
-
-- **LLM 集成**：支持 DeepSeek、Gemini、ChatGPT 等多种大模型，用户可动态切换。
-- **会话模式**：自然语言对话接口，简洁热情的应答风格，适合即时交互场景。
-- **高级模式**：基于自然语言指令，LLM（大语言模型）可进行任务规划与自动化执行。在此模式下，LLM能够通过**函数调用（Function Calling）**机制，调用设备授权的特定外设功能模块（目前仅限USB HID）完成复杂操作。
-
-### 1.3 任务自动化
-
-- **LLM调用自动化模块**：在高级模式下，LLM可以识别用户意图，并以结构化的方式（通过函数调用）请求执行已授权的USB HID功能。
-
-### 1.4 NOOX Shell & AI 交互功能
-
-此功能为 NOOX 设备提供一个统一的跨平台 USB 接口，允许用户在计算机终端上同时实现两大核心操作：
-
-1.  **计算机 Shell 操作：** 直接在终端中执行标准的 Shell 命令，并实时查看输出。
-2.  **AI 对话交互：** 在同一终端窗口中，与 NOOX 内置的 AI 模型进行自然语言对话，获取智能分析和回复。
-
-该方案通过将 ESP32-S3 配置为 **USB 复合设备**，并结合一个轻量级的 **主机代理程序**，实现了即插即用的体验，无需在主机上预装任何依赖或配置环境。
-
-#### 技术架构概述
-
-*   **ESP32 USB 复合设备:** ESP32-S3 配置为 USB 复合设备，提供 `HID` (模拟键盘/鼠标), `CDC` (虚拟串口用于数据通信), 和 `MSD` (模拟 U 盘存放主机代理程序) 接口。
-*   **主机代理程序:** 运行在用户计算机上的自包含原生可执行文件，负责启动、连接 ESP32 的 `CDC` 虚拟串口，转发用户输入，执行 Shell 命令，回传结果，并处理 WiFi 状态。
-*   **通信协议:** ESP32 与主机代理程序之间通过 `CDC` 虚拟串口进行通信，采用基于 **JSON** 的消息格式。
-*   **输入路由与 AI 集成:** ESP32 固件中的 `UsbShellManager` 负责接收主机数据，传递给 `llmManager` 进行 AI 处理和决策，最终将 Shell 命令或 AI 回复统一发送回主机。
-
-#### 用户工作流程
-
-1.  **连接设备:** 用户通过 USB 线将 NOOX 设备连接到计算机。
-2.  **自动识别:** 计算机自动识别出三个设备：一个标准的键盘/鼠标，一个虚拟串口，以及一个 U 盘。
-3.  **启动代理:** ESP32 通过 `HID` 模拟键盘操作，在主机上自动运行 MSD 模拟的 U 盘内的 Go 代理程序，并传入当前 WiFi 状态参数。
-4.  **WiFi 状态处理与通信测试:** Go 代理程序启动后，首先发送 `linktest` 消息测试与设备的双向通信。如果 ESP32 初始 WiFi 未连接，Go 代理程序会尝试获取主机当前连接的 WiFi 信息，并通过 `connectToWifi` 消息回传给设备进行连接。
-5.  **开始交互:** 代理程序完成初始化后，用户即可在当前终端窗口中输入自然语言与 AI 对话。所有交互（包括 Shell 命令的执行和 AI 的回复）都会在这个窗口中无缝进行。
-
-### 1.5 外设功能控制
-
-- **USB HID**：模拟键盘与鼠标事件，实现文本输入、快捷键操作、系统级控制（打开/关闭应用、文件管理、屏幕截图等）。
+<p align="center">
+  <img src="https://img.shields.io/badge/Platform-ESP32--S3-blue?style=flat-square" alt="Platform"/>
+  <img src="https://img.shields.io/badge/Framework-Arduino-orange?style=flat-square" alt="Framework"/>
+  <img src="https://img.shields.io/badge/IDE-PlatformIO-brightgreen?style=flat-square" alt="IDE"/>
+  <img src="https://img.shields.io/badge/License-MIT-yellow?style=flat-square" alt="License"/>
+</p>
 
 ---
 
-## 2. 硬件架构
+## 📖 项目概述
 
-- **主控芯片**：ESP32-S3，丰富外设接口。
-- **存储**：利用主控内置Flash，通过 LittleFS 文件系统持久化存储设备配置文件。
-- **显示**：0.96" OLED（I2C，驱动为SSD1315），用于实时状态、LLM模式和任务信息显示。
-- **按键**：3×物理按键（OK/上下），用于基本UI交互。
-- **指示灯**：用于反馈设备状态与错误提示。
-- **接口**：USB Type-C（HID/CDC/MSD 模式）、Wi-Fi（2.4GHz）。
+NOOX 是一个基于 **ESP32-S3** 的智能硬件平台，提供以下核心能力：
 
-具体硬件配置请查看hardware.md文件。
+- 🤖 **LLM 集成**：支持 DeepSeek、OpenRouter、OpenAI 等多种大语言模型
+- 💬 **多模态交互**：Web 界面、USB Shell、OLED + 按键
+- ⌨️ **设备控制**：USB HID 模拟键盘/鼠标，实现计算机自动化
+- 🔧 **工具调用**：AI 可执行 Shell 命令、控制 GPIO、操作键盘鼠标
+- 📱 **即插即用**：无需安装依赖，连接即可使用
 
----
+### 典型应用场景
 
-## 3. 软件架构
-
-### 3.1 系统平台
-
-- **开发框架**：Arduino ，使用platformIO配置环境。
-
-### 3.2 驱动与中间件
-
-- **硬件抽象层**：封装 GPIO、I2C、SPI、USB HID 驱动。
-- **网络协议栈**：LWIP TCP/IP，支持 HTTPS（mbedTLS）和 WebSocket。
-- **文件系统**：LittleFS，用于托管网页静态资源及存储 `config.json` 配置文件。
-
-### 3.3 服务与模块
-
-- **WebServer 模块**：静态文件服务与 REST API。
-- **WebSocket 模块**：事件广播与命令下发。
-- **LLM 接口层**：统一请求封装，支持多模型切换与负载均衡。
-- **任务管理器**：指令解析、状态跟踪与并发执行。
-- **HID 控制器**：事件映射与日志记录。
-
-### 3.4 NOOX Shell & AI 交互模块
-
-*   **`UsbShellManager` 实现:** 负责处理 `CDC` 通信逻辑，接收用户请求和 Shell 输出，并将其转发给 `llmManager`。将 `llmManager` 生成的 Shell 命令和 AI 回复统一发送回主机。
-*   **主机代理程序:** 负责串口通信、Shell 命令执行、输入/输出处理以及 WiFi 状态处理。
+智能桌面助手 • 文件管理自动化 • 开发者工具 • 智能家居集成
 
 ---
 
-## 4. 交互界面设计
+## ✨ 核心特性
 
-### 4.1 网页端（Mobile Web UI）
+### 双模式 LLM 交互
 
-- **设计风格**：扁平化、圆角布局，配色简洁。
-- **顶栏**：毛玻璃效果，左侧为项目名称，右侧为工作模式切换按钮和设置按钮。
-- **设置侧边栏**：点击设置按钮后，会从左侧滑出设置面板。该面板提供统一的配置界面，允许用户：
-  - **动态管理LLM**：选择LLM提供商（如DeepSeek, OpenRouter, Google Gemini），查看和更新对应提供商的API Key，并从可用列表中选择要使用的具体模型。
-  - **全功能WiFi管理**：查看已保存的WiFi网络列表，连接到指定网络，断开当前连接，或删除不再需要的网络配置。同时，也支持添加新的WiFi网络。
-  - 所有更改通过“保存并应用”按钮统一提交，系统会将配置写入Flash中的 `config.json` 文件，并立即应用新设置。
-- **聊天窗口**：3:2 比例，滚动对话记录。
-- **输入区**：文本输入框 + 文件/图片上传。
-- **单模式接入**：网页界面仅通过 Wi-Fi 网络访问 ESP32-S3 上托管的网页。
+- **聊天模式**：简单问答交互，适合日常对话和知识咨询
+- **高级模式**：支持工具调用（Function Calling），可执行 Shell 命令、控制键盘鼠标、操作 GPIO
 
-当切换至高级模式下，除了以上组件，界面还包括:
+### 多通道交互
 
-- **高级功能区**：
-  1. **功能面板**：竖向排列，包含各功能模块，右侧排列AUTO按钮（启用后LLM即可使用该功能）与→按钮（点击后进入该功能选项详细界面）
-  2. **自动化指令面板**：横向双列排列，支持创建、删除、运行脚本。
+```
+┌──────────────┬──────────────┬──────────────┬──────────────┐
+│  Web 浏览器  │  OLED + 按键 │  USB Shell   │  USB HID     │
+│  (WebSocket) │  (本地显示)  │  (终端交互)  │  (设备控制)  │
+└──────────────┴──────────────┴──────────────┴──────────────┘
+                              ↓
+                        [ ESP32-S3 AI 核心 ]
+```
 
-### 4.2 OLED GUI
+### USB 复合设备
 
-- **主界面**：经过重构，现在包含多个状态和菜单。
-  - **状态显示**：简洁地显示当前 LLM 模式、LLM 模型名称、当前连接的 WiFi SSID。如果 WiFi 未连接，则在 IP 地址位置显示 WiFi 连接状态。同时，还包含一个内存占用条（以百分比和可用KB显示）。
-  - **主菜单**：提供“WiFi 设置”和“系统信息”等选项，通过按键进行导航。
-  - **WiFi 菜单**：提供断开当前 WiFi、连接已保存网络、扫描可用网络等功能。
-  - **已保存 WiFi 列表**：显示已保存的 WiFi 网络列表，用户可以选择连接。
-  - **按键操作**：通过三枚物理按键（OK/选择、上、下）实现菜单导航、选项选择和功能触发，并加入了消抖处理以优化用户体验。
+- **HID**：模拟键盘和鼠标
+- **CDC**：虚拟串口通信
+- **MSD**：模拟 U 盘，存放主机代理程序
+
+### 智能特性
+
+- **对话历史管理**：自动保存最近 40 条消息，支持上下文理解
+- **动态配置**：运行时修改 LLM 提供商、模型和 WiFi 配置
+- **内存优化**：使用 PSRAM 存储大对象，确保系统稳定运行
 
 ---
 
-## 5. 开发与集成指南
+## 🚀 快速开始
 
-1.  **功能抽象与LLM函数调用**：将设备的外设功能（目前仅限USB HID）抽象为清晰的函数或工具，并为其定义详细的JSON Schema描述。这些描述将被整合到LLM的系统提示词中，以便LLM理解并以结构化的函数调用（Function Calling）格式返回执行指令。
-2.  **动态系统提示词**：在发送用户指令给LLM前，根据当前的工作模式（对话模式/高级模式）和用户授权的工具列表，动态拼接设备能力列表与当前状态作为LLM的系统提示。
-3.  **配置文件管理**：项目采用基于 LittleFS 的配置文件系统。所有关键配置，包括LLM提供商、API密钥、模型列表以及WiFi网络凭据，都以JSON格式存储在根目录的 `config.json` 文件中。设备启动时会加载此文件，运行过程中用户通过Web界面所做的任何更改都会被写回该文件，从而实现配置的持久化。
+
+### 快速部署
+
+#### 1. 克隆并编译
+
+```bash
+git clone https://github.com/your-repo/NOOX.git
+cd NOOX
+
+# 安装 PlatformIO
+
+# 编译和上传
+pio run --target upload
+pio run --target uploadfs  # 首次使用必须执行
+```
+
+
+#### 2. 访问 Web 界面
+
+1. 查看 OLED 屏幕显示的 IP 地址（如 `192.168.1.100`）
+2. 在浏览器中打开该地址
+3. 开始与 AI 对话！
+
+---
+
+## 📚 文档
+
+| 文档 | 说明 |
+|------|------|
+| [技术规格文档](docs/TECHNICAL_SPECIFICATION.md) | 完整的系统架构、API 参考、数据结构 |
+| [用户指南](docs/USER_GUIDE.md) | 详细使用说明、故障排除、最佳实践 |
+| [对话历史指南](docs/conversation_history_guide.md) | 对话历史功能详解 |
+| [Shell 功能指南](shell_ai_feature_guide.md) | USB Shell 交互使用说明 |
+| [硬件说明](hardware.md) | 引脚定义、接口说明 |
+
+---
+
+## 🔧 硬件规格
+
+### 主控芯片
+
+**ESP32-S3-WROOM-1**
+- CPU: Xtensa® 双核 32 位 LX7 @ 240 MHz
+- SRAM: 512 KB | Flash: 16 MB | PSRAM: 8 MB
+- WiFi: 802.11 b/g/n (2.4 GHz) | USB: USB 2.0 OTG
+
+### 外设接口
+
+| 类型 | 接口 | 引脚 |
+|------|------|------|
+| OLED 显示 | I2C | GPIO4 (SDA), GPIO5 (SCL) |
+| 按键输入 | GPIO | GPIO47 (OK), GPIO21 (Up), GPIO38 (Down) |
+| LED 输出 | GPIO | GPIO41/40/39 (单色), GPIO48 (RGB WS2812) |
+| I2C 扩展 | I2C | GPIO1 (SDA), GPIO2 (SCL) |
+| TF 卡 | SPI | GPIO6/15/16/7 (CS/SCK/MISO/MOSI) |
+| UART 扩展 | UART | GPIO17 (TX), GPIO18 (RX) |
+| 通用 GPIO | GPIO | GPIO8, GPIO9, GPIO10 |
+
+完整引脚定义见 [`hardware.md`](hardware.md)
+
+---
+
+## 💻 软件架构
+
+### 系统架构
+
+```
+用户交互层 (Web/OLED/USB Shell/USB HID)
+            ↓
+应用管理层 (WebManager/UIManager/UsbShellManager/HIDManager)
+            ↓
+   [ LLMManager - AI 核心引擎 ]
+            ↓
+基础服务层 (WiFiManager/ConfigManager/HardwareManager)
+            ↓
+       ESP32-S3 硬件
+```
+
+### 核心模块
+
+| 模块 | 职责 |
+|------|------|
+| **LLMManager** | LLM API 调用、对话历史、工具调用 |
+| **WebManager** | Web 服务器、WebSocket 通信 |
+| **UIManager** | OLED 显示、按键输入、菜单系统 |
+| **HIDManager** | USB 键盘/鼠标模拟 |
+| **UsbShellManager** | CDC 串口、JSON 消息处理 |
+
+### 技术栈
+
+Arduino Framework • PlatformIO • LittleFS • FreeRTOS • U8g2 • FastLED • ESPAsyncWebServer • ArduinoJson
+
+---
+
+## 🗺️ 开发路线图
+
+### ✅ 已完成
+
+- 基础硬件驱动、WiFi 管理、LLM 集成
+- Web 界面、USB 复合设备、对话历史
+- 工具调用（Shell/HID/GPIO）、内存优化
+
+### 🚧 进行中
+
+- Web 身份验证、OTA 更新、日志记录
+
+### 📋 计划中
+
+- 语音输入/输出、图像识别、本地 LLM
+- Python/Node.js SDK、桌面/移动客户端
+- 完整的 REST API、视频教程
+
+---
+
+## 🤝 贡献
+
+欢迎贡献代码、报告问题或提出建议！
+
+### 快速贡献
+
+1. Fork 本仓库
+2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'feat: 添加某功能'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 开启 Pull Request
+
+### 代码规范
+
+- 使用 4 空格缩进
+- 遵循 Arduino 代码风格
+- 使用 [Conventional Commits](https://www.conventionalcommits.org/) 提交规范
+- 确保代码可编译且在硬件上测试通过
+
+---
+
+## ❓ 常见问题
+
+<details>
+<summary><b>无法连接 WiFi</b></summary>
+
+- 确认是 2.4GHz WiFi（不支持 5GHz）
+- 检查 SSID 和密码大小写
+- 查看串口日志排查问题
+</details>
+
+<details>
+<summary><b>LLM API 调用失败</b></summary>
+
+- 验证 API Key 有效性
+- 检查网络连接稳定性
+- 查看串口输出的 HTTP 错误码
+</details>
+
+<details>
+<summary><b>OLED 无显示</b></summary>
+
+- 检查 I2C 接线（SDA=GPIO4, SCL=GPIO5）
+- 确认 OLED 地址为 0x3C
+- 运行 I2C 扫描代码检测
+</details>
+
+<details>
+<summary><b>内存不足导致重启</b></summary>
+
+- 清除对话历史
+- 使用质量好的 USB 电源（5V 2A）
+- 减少 WebSocket 连接数
+</details>
+
+更多问题请查看 [用户指南 - 故障排除](docs/USER_GUIDE.md#9-故障排除)
+
+
+---
+
+## 🙏 致谢
+
+感谢以下开源项目和服务：
+
+**开源库**: [ESP32 Arduino](https://github.com/espressif/arduino-esp32) • [PlatformIO](https://platformio.org/) • [U8g2](https://github.com/olikraus/u8g2) • [FastLED](https://github.com/FastLED/FastLED) • [ESPAsyncWebServer](https://github.com/me-no-dev/ESPAsyncWebServer) • [ArduinoJson](https://arduinojson.org/)
+
+**LLM 提供商**: [DeepSeek](https://www.deepseek.com/) • [OpenRouter](https://openrouter.ai/) • [OpenAI](https://openai.com/)
+
+---
+
+## 📞 联系方式
+
+- 项目主页: https://github.com/your-repo/NOOX
+- 问题反馈: https://github.com/your-repo/NOOX/issues
+- 讨论区: https://github.com/your-repo/NOOX/discussions
+
+---
+
+## 📜 许可证
+
+本项目采用 **MIT 许可证**。详见 [LICENSE](LICENSE) 文件。
+
+---
+
+<p align="center">
+  <strong>用 ❤️ 和 🤖 构建</strong>
+  <br>
+  <sub>NOOX - 让 AI 触手可及</sub>
+</p>
+
+<p align="center">
+  如果这个项目对您有帮助，请给我们一个 ⭐️
+</p>
