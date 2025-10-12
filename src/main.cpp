@@ -70,8 +70,8 @@ void setup() {
 
     // Instantiate UsbShellManager first, passing nullptr for LLMManager initially
     usbShellManagerPtr = new UsbShellManager(nullptr, &wifiManager);
-    // Instantiate LLMManager, passing the UsbShellManager pointer
-    llmManagerPtr = new LLMManager(configManager, wifiManager, usbShellManagerPtr);
+    // Instantiate LLMManager, passing the UsbShellManager, HIDManager, and HardwareManager pointers
+    llmManagerPtr = new LLMManager(configManager, wifiManager, usbShellManagerPtr, &hidManager, &hardwareManager);
     // Resolve circular dependency by setting LLMManager in UsbShellManager
     usbShellManagerPtr->setLLMManager(llmManagerPtr);
 

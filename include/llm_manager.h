@@ -16,8 +16,10 @@
 #include "config_manager.h"
 #include "wifi_manager.h" // Include AppWiFiManager header
 
-// Forward declaration for UsbShellManager
+// Forward declarations
 class UsbShellManager;
+class HIDManager;
+class HardwareManager;
 
 /**
  * @brief 定义支持的 LLM 提供商。
@@ -129,8 +131,11 @@ public:
      * @param config 对 ConfigManager 的引用，用于访问和管理配置信息。
      * @param wifiManager 对 AppWiFiManager 的引用，用于检查网络状态。
      * @param usbShellManager 对 UsbShellManager 的指针，用于发送消息到主机。
+     * @param hidManager 对 HIDManager 的指针，用于USB HID操作。
+     * @param hardwareManager 对 HardwareManager 的指针，用于GPIO控制。
      */
-    LLMManager(ConfigManager& config, AppWiFiManager& wifiManager, UsbShellManager* usbShellManager);
+    LLMManager(ConfigManager& config, AppWiFiManager& wifiManager, UsbShellManager* usbShellManager,
+               HIDManager* hidManager, HardwareManager* hardwareManager);
 
     /**
      * @brief 初始化 LLM 管理器。
@@ -193,6 +198,8 @@ private:
     ConfigManager& configManager; ///< ConfigManager 的引用。
     AppWiFiManager& wifiManager;   ///< AppWiFiManager 的引用。
     UsbShellManager* _usbShellManager; ///< UsbShellManager 的指针。
+    HIDManager* _hidManager;      ///< HIDManager 的指针。
+    HardwareManager* _hardwareManager; ///< HardwareManager 的指针。
     String currentProvider;       ///< 当前使用的 LLM 提供商名称。
     String currentModel;          ///< 当前使用的模型名称。
     String currentApiKey;         ///< 当前提供商的 API 密钥。
