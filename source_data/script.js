@@ -406,8 +406,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const state = toggle.classList.contains('active');
             console.log(`GPIO ${gpioNum} toggled to ${state ? 'ON' : 'OFF'}`);
             showToast(`GPIO ${gpioNum} ${state ? '已开启' : '已关闭'}`, 'info', 2000);
-            // Here you can send GPIO state to device if needed
-            // sendToESP32({ type: 'gpio_control', gpio: gpioNum, state: state });
+            // Send GPIO state to device
+            sendToESP32({ type: 'gpio_control', gpio: gpioNum, state: state });
         });
     });
 

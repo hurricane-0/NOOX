@@ -85,7 +85,7 @@ void setup() {
 
     hidManager.begin();
     // Instantiate WebManager after LLMManager and UsbShellManager are initialized
-    webManagerPtr = new WebManager(*llmManagerPtr, wifiManager, configManager);
+    webManagerPtr = new WebManager(*llmManagerPtr, wifiManager, configManager, hardwareManager);
     webManagerPtr->begin();
 
     // Initialize LittleFS for MSD

@@ -15,6 +15,9 @@
 #include <ArduinoJson.h>
 #include <freertos/queue.h>
 
+// Forward declaration
+class HardwareManager;
+
 /**
  * @brief WebManager 类，用于管理设备上的 Web 服务器和 WebSocket 通信。
  */
@@ -23,7 +26,7 @@ public:
     /**
      * @brief 构造函数。
      */
-    WebManager(LLMManager& llm, AppWiFiManager& wifi, ConfigManager& config);
+    WebManager(LLMManager& llm, AppWiFiManager& wifi, ConfigManager& config, HardwareManager& hardware);
 
     /**
      * @brief 初始化 Web 管理器。
@@ -49,6 +52,7 @@ private:
     LLMManager& llmManager;
     AppWiFiManager& wifiManager;
     ConfigManager& configManager;
+    HardwareManager& hardwareManager;
     AsyncWebServer server;
     AsyncWebSocket ws;
     LLMMode currentLLMMode;

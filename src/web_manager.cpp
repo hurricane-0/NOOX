@@ -1,12 +1,13 @@
 #include "web_manager.h"
 #include "wifi_manager.h"
+#include "hardware_manager.h"
 #include <ArduinoJson.h>
 #include <AsyncJson.h>
 #include <LittleFS.h>
 
 // Constructor
-WebManager::WebManager(LLMManager& llm, AppWiFiManager& wifi, ConfigManager& config) 
-    : llmManager(llm), wifiManager(wifi), configManager(config), server(80), ws("/ws"),
+WebManager::WebManager(LLMManager& llm, AppWiFiManager& wifi, ConfigManager& config, HardwareManager& hardware) 
+    : llmManager(llm), wifiManager(wifi), configManager(config), hardwareManager(hardware), server(80), ws("/ws"),
       currentLLMMode(CHAT_MODE) {
 }
 
@@ -167,6 +168,29 @@ void WebManager::handleWebSocketData(AsyncWebSocketClient * client, void *arg, u
             // 清除对话历史
             llmManager.clearConversationHistory();
             client->text("{\"type\":\"history_cleared\", \"status\":\"success\", \"message\":\"对话历史已清除\"}");
+        } else if (type == "gpio_control") {
+            // GPIO控制
+            String gpioNum = doc["gpio"].as<String>();
+            bool state = doc["state"].as<bool>();
+            
+            // 根据GPIO编号调用相应的硬件管理器方法
+            bool success = false;
+            if (gpioNum == "1") {
+                hardwareManager.setGpio1State(state);
+                success = true;
+            } else if (gpioNum == "2") {
+                hardwareManager.setGpio2State(state);
+                success = true;
+            }
+            
+            if (success) {
+                String response = "{\"type\":\"gpio_status\", \"status\":\"success\", \"gpio\":\"" + gpioNum + "\", \"state\":" + (state ? "true" : "false") + "}";
+                client->text(response);
+                Serial.printf("GPIO %s set to %s\n", gpioNum.c_str(), state ? "HIGH" : "LOW");
+            } else {
+                String response = "{\"type\":\"gpio_status\", \"status\":\"error\", \"message\":\"Invalid GPIO number\"}";
+                client->text(response);
+            }
         }
     }
 }
