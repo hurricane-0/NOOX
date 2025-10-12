@@ -2,6 +2,15 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Global State ---
     let websocket; // WebSocket连接对象
     let currentConfig = {}; // 当前配置数据
+    let loadingMessageElement = null; // 加载消息元素
+
+    // Configure marked.js for markdown rendering
+    if (typeof marked !== 'undefined') {
+        marked.setOptions({
+            breaks: true,
+            gfm: true
+        });
+    }
 
     // --- Element Selectors ---
     // 获取页面上的主要DOM元素
@@ -14,6 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const messageInput = document.getElementById('message-input');
     const sendBtn = document.getElementById('send-btn');
     const messagesContainer = document.getElementById('messages');
+    const toastContainer = document.getElementById('toast-container');
 
     // --- New Settings Panel Elements ---
     // 设置面板相关元素
@@ -30,13 +40,85 @@ document.addEventListener('DOMContentLoaded', () => {
     const saveSettingsBtn = document.getElementById('save-settings-btn');
 
     // --- Core Functions ---
+    
+    // Toast notification system
+    function showToast(message, type = 'info', duration = 4000) {
+        const toast = document.createElement('div');
+        toast.classList.add('toast', type);
+        
+        const icon = document.createElement('span');
+        icon.classList.add('toast-icon');
+        icon.textContent = type === 'error' ? '✕' : type === 'success' ? '✓' : 'ℹ';
+        
+        const messageSpan = document.createElement('span');
+        messageSpan.classList.add('toast-message');
+        messageSpan.textContent = message;
+        
+        const closeBtn = document.createElement('button');
+        closeBtn.classList.add('toast-close');
+        closeBtn.textContent = '×';
+        closeBtn.onclick = () => removeToast(toast);
+        
+        toast.appendChild(icon);
+        toast.appendChild(messageSpan);
+        toast.appendChild(closeBtn);
+        
+        toastContainer.appendChild(toast);
+        
+        if (duration > 0) {
+            setTimeout(() => removeToast(toast), duration);
+        }
+    }
+    
+    function removeToast(toast) {
+        toast.classList.add('hiding');
+        setTimeout(() => {
+            if (toast.parentElement) {
+                toast.parentElement.removeChild(toast);
+            }
+        }, 300);
+    }
+
+    // Show loading indicator
+    function showLoadingMessage() {
+        if (loadingMessageElement) return; // 避免重复显示
+        
+        loadingMessageElement = document.createElement('div');
+        loadingMessageElement.classList.add('message', 'loading');
+        loadingMessageElement.textContent = 'thinking...';
+        
+        messagesContainer.appendChild(loadingMessageElement);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+
+    // Remove loading indicator
+    function removeLoadingMessage() {
+        if (loadingMessageElement && loadingMessageElement.parentElement) {
+            loadingMessageElement.parentElement.removeChild(loadingMessageElement);
+            loadingMessageElement = null;
+        }
+    }
+    
     // 添加消息到聊天窗口
     function appendMessage(text, sender) {
         const messageElement = document.createElement('div');
         messageElement.classList.add('message', sender);
         
+        // For AI messages, render markdown
+        if (sender === 'ai' && typeof marked !== 'undefined') {
+            const contentDiv = document.createElement('div');
+            contentDiv.innerHTML = marked.parse(text);
+            messageElement.appendChild(contentDiv);
+            
+            // Add pulse animation for AI responses
+            messageElement.classList.add('pulse');
+            setTimeout(() => {
+                messageElement.classList.remove('pulse');
+            }, 1500);
+        } else {
         const textNode = document.createTextNode(text);
         messageElement.appendChild(textNode);
+        }
 
         const timestampElement = document.createElement('span');
         timestampElement.classList.add('timestamp');
@@ -54,7 +136,7 @@ document.addEventListener('DOMContentLoaded', () => {
             websocket.send(JSON.stringify(data));
         } else {
             console.warn('WebSocket not connected.');
-            appendMessage('Cannot send message, connection not established.', 'system-error');
+            showToast('无法发送消息，未连接到设备', 'error');
         }
     }
 
@@ -64,28 +146,32 @@ document.addEventListener('DOMContentLoaded', () => {
         websocket = new WebSocket(`ws://${location.host}/ws`);
         websocket.onopen = () => {
             console.log('WebSocket connected');
-            appendMessage('Connected to device.', 'system');
+            appendMessage('已连接到设备', 'system');
+            showToast('设备连接成功', 'success', 3000);
         };
         websocket.onmessage = (event) => {
             console.log('Message from ESP32:', event.data);
+            
+            // Remove loading indicator when receiving response
+            removeLoadingMessage();
+            
             try {
                 const data = JSON.parse(event.data);
                 // 处理不同类型的消息
                 if (data.type === 'chat_message' && data.sender === 'bot') {
                     appendMessage(data.text, 'ai');
                 } else if (data.type === 'tool_execution_result') {
-                    appendMessage(`Tool '${data.tool_name}' executed. Result: ${data.result}`, 'system');
+                    appendMessage(`工具 '${data.tool_name}' 已执行。结果: ${data.result}`, 'system');
                 } else if (data.type === 'config_update_status') {
                     if (data.status === 'success') {
                         appendMessage(data.message, 'system');
-                        settingsSidebar.classList.remove('open'); // Close sidebar on success
-                        loadSettings(); // Reload settings to reflect changes
+                        showToast('设置保存成功', 'success');
+                        settingsSidebar.classList.remove('open');
+                        loadSettings();
                     } else {
-                        appendMessage(`Error: ${data.message}`, 'system-error');
+                        showToast(`错误: ${data.message}`, 'error');
                     }
-                    // Remove loading indicator here if one was added
-                }
-                else {
+                } else {
                     appendMessage(event.data, 'ai');
                 }
             } catch (e) {
@@ -94,11 +180,13 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         websocket.onerror = (event) => {
             console.error('WebSocket error:', event);
-            appendMessage('WebSocket connection error.', 'system-error');
+            showToast('WebSocket连接错误', 'error');
+            removeLoadingMessage();
         };
         websocket.onclose = () => {
             console.log('WebSocket closed');
-            appendMessage('Connection disconnected.', 'system-error');
+            showToast('设备连接已断开', 'error', 5000);
+            removeLoadingMessage();
         };
     }
 
@@ -150,7 +238,7 @@ document.addEventListener('DOMContentLoaded', () => {
             updateWiFiUI();
         } catch (error) {
             console.error('Error loading settings:', error);
-            appendMessage('Could not load device settings.', 'system-error');
+            showToast('无法加载设备设置', 'error');
         }
     }
 
@@ -165,22 +253,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
-            appendMessage('Saving settings to device...', 'system'); // Add loading indicator
+            showToast('正在保存设置...', 'info', 2000);
             const response = await fetch('/api/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(currentConfig)
             });
             const result = await response.json();
-            if (result.status === 'success') {
-                // The actual success message and sidebar closing will be handled by WebSocket 'config_update_status'
-                // appendMessage('Settings update initiated.', 'system');
-            } else {
+            if (result.status !== 'success') {
                 throw new Error(result.message);
             }
         } catch (error) {
             console.error('Error saving settings:', error);
-            appendMessage(`Error saving settings: ${error.message}`, 'system-error');
+            showToast(`保存设置失败: ${error.message}`, 'error');
         }
     }
 
@@ -190,6 +275,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const messageText = messageInput.value.trim();
         if (messageText) {
             appendMessage(messageText, 'user');
+            showLoadingMessage(); // Show thinking indicator
             sendToESP32({ type: 'chat_message', payload: messageText });
             messageInput.value = '';
             messageInput.style.height = 'auto';
@@ -256,7 +342,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const ssid = wifiSsidInput.value.trim();
         const password = wifiPasswordInput.value.trim();
         if (!ssid) {
-            alert('Please enter a WiFi SSID.');
+            showToast('请输入WiFi名称', 'error');
             return;
         }
 
@@ -270,7 +356,7 @@ document.addEventListener('DOMContentLoaded', () => {
         wifiSsidInput.value = '';
         wifiPasswordInput.value = '';
         updateWiFiUI();
-        appendMessage(`WiFi network '${ssid}' saved locally. Click "Save & Apply" to send to device.`, 'system');
+        showToast(`WiFi '${ssid}' 已保存，点击"保存并应用"同步到设备`, 'success');
     });
 
     // 连接WiFi事件
@@ -284,9 +370,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: `ssid=${encodeURIComponent(ssid)}`
             });
             const result = await response.json();
-            appendMessage(result.message, result.status === 'success' ? 'system' : 'system-error');
+            showToast(result.message, result.status === 'success' ? 'success' : 'error');
         } catch (error) {
-            appendMessage(`Error connecting to WiFi: ${error.message}`, 'system-error');
+            showToast(`连接WiFi失败: ${error.message}`, 'error');
         }
     });
 
@@ -295,9 +381,9 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const response = await fetch('/api/wifi/disconnect', { method: 'POST' });
             const result = await response.json();
-            appendMessage(result.message, result.status === 'success' ? 'system' : 'system-error');
+            showToast(result.message, result.status === 'success' ? 'success' : 'error');
         } catch (error) {
-            appendMessage(`Error disconnecting WiFi: ${error.message}`, 'system-error');
+            showToast(`断开WiFi失败: ${error.message}`, 'error');
         }
     });
 
@@ -308,11 +394,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
         currentConfig.wifi_networks = currentConfig.wifi_networks.filter(n => n.ssid !== ssid);
         updateWiFiUI();
-        appendMessage(`WiFi network '${ssid}' deleted locally. Click "Save & Apply" to send to device.`, 'system');
+        showToast(`WiFi '${ssid}' 已删除，点击"保存并应用"同步到设备`, 'info');
+    });
+
+    // GPIO toggle event handlers
+    const gpioToggles = document.querySelectorAll('.gpio-toggle');
+    gpioToggles.forEach(toggle => {
+        toggle.addEventListener('click', () => {
+            const gpioNum = toggle.getAttribute('data-gpio');
+            toggle.classList.toggle('active');
+            const state = toggle.classList.contains('active');
+            console.log(`GPIO ${gpioNum} toggled to ${state ? 'ON' : 'OFF'}`);
+            showToast(`GPIO ${gpioNum} ${state ? '已开启' : '已关闭'}`, 'info', 2000);
+            // Here you can send GPIO state to device if needed
+            // sendToESP32({ type: 'gpio_control', gpio: gpioNum, state: state });
+        });
     });
 
     // --- Initialization ---
     // 页面初始化，显示欢迎信息并尝试连接设备
-    appendMessage('Welcome to NOOX! Attempting to connect to device...', 'system');
+    appendMessage('欢迎使用 NOOX！正在连接设备...', 'system');
     initWebSocket();
 });

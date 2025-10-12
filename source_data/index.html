@@ -2,9 +2,10 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>NOOX</title>
     <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -16,7 +17,7 @@
                     <button id="dialogue-mode-btn" class="mode-btn active" data-label="Chat Mode">Chat</button>
                     <button id="advanced-mode-btn" class="mode-btn" data-label="Advanced Mode">Advanced</button>
                 </div>
-                <button id="settings-btn" class="settings-btn" data-icon="settings"></button>
+                <button id="settings-btn" class="settings-btn" data-icon="menu"></button>
             </div>
         </header>
 
@@ -33,66 +34,50 @@
             <button id="send-btn" class="send-btn" data-icon="send">发送</button>
         </section>
 
-        <!-- 4. Advanced Mode Function Bar & Automation Command Area -->
+        <!-- 4. Advanced Mode Function Bar -->
         <section class="advanced-mode-panels" id="advanced-mode-panels">
             <div class="function-panel card glass-effect">
                 <h3>功能模块</h3>
-                <div class="function-list">
-                    <!-- Function modules will be dynamically added here -->
-                    <div class="function-item" data-label="WiFi">
-                        <span>
-                            WiFi
-                            <span class="description">Manage wireless connections</span>
-                        </span>
-                        <div class="actions">
-                            <button class="auto-btn">AUTO</button>
-                            <button class="detail-btn" data-icon="detail"></button>
+                
+                <!-- Shell Terminal Module -->
+                <div class="module-banner">
+                    <div class="module-title">Shell 交互</div>
+                    <div class="module-description">命令行终端模拟</div>
+                </div>
+
+                <!-- HID Control Module -->
+                <div class="module-banner">
+                    <div class="module-title">HID 操作</div>
+                    <div class="module-description">键盘鼠标控制</div>
+                </div>
+
+                <!-- GPIO Control Module -->
+                <div class="module-container">
+                    <div class="module-header">
+                        <div>
+                            <div class="module-title">GPIO 操作</div>
+                            <div class="module-description">通用输入输出控制</div>
                         </div>
                     </div>
-                    <div class="function-item" data-label="USB HID">
-                        <span>
-                            USB HID
-                            <span class="description">Control USB Human Interface Devices</span>
-                        </span>
-                        <div class="actions">
-                            <button class="auto-btn">AUTO</button>
-                            <button class="detail-btn" data-icon="detail"></button>
-                        </div>
-                    </div>
-                    <div class="function-item" data-label="蓝牙通信">
-                        <span>
-                            蓝牙通信
-                            <span class="description">Bluetooth communication settings</span>
-                        </span>
-                        <div class="actions">
-                            <button class="auto-btn">AUTO</button>
-                            <button class="detail-btn" data-icon="detail"></button>
-                        </div>
-                    </div>
-                    <div class="function-item" data-label="Timer">
-                        <span>
-                            Timer
-                            <span class="description">Set and manage timers</span>
-                        </span>
-                        <div class="actions">
-                            <button class="auto-btn">AUTO</button>
-                            <button class="detail-btn" data-icon="detail"></button>
-                        </div>
-                    </div>
-                    <div class="function-item" data-label="GPIO">
-                        <span>
-                            GPIO
-                            <span class="description">General Purpose Input/Output control</span>
-                        </span>
-                        <div class="actions">
-                            <button class="auto-btn">AUTO</button>
-                            <button class="detail-btn" data-icon="detail"></button>
+                    <div class="module-content">
+                        <div class="gpio-controls">
+                            <div class="gpio-item">
+                                <span class="gpio-label">GPIO 1</span>
+                                <div class="gpio-toggle" data-gpio="1"></div>
+                            </div>
+                            <div class="gpio-item">
+                                <span class="gpio-label">GPIO 2</span>
+                                <div class="gpio-toggle" data-gpio="2"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
         </section>
     </div>
+
+    <!-- Toast Notification Container -->
+    <div class="toast-container" id="toast-container"></div>
 
     <!-- Settings Sidebar (initially hidden) -->
     <aside class="settings-sidebar" id="settings-sidebar">
