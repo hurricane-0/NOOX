@@ -8,6 +8,122 @@
 const size_t JSON_DOC_SIZE = 262144; // 为可能更大的LLM响应增加了大小，并利用PSRAM
 const size_t MAX_RESPONSE_LENGTH = JSON_DOC_SIZE; // Maximum expected response length
 
+// ==================== ConversationHistory 类实现 ====================
+
+// 构造函数
+ConversationHistory::ConversationHistory(size_t maxMessages) 
+    : capacity(maxMessages), count(0), startIndex(0) {
+    // 使用PSRAM分配消息数组
+    messages = (ConversationMessage*)ps_malloc(sizeof(ConversationMessage) * capacity);
+    if (messages) {
+        // 初始化所有消息指针为nullptr
+        for (size_t i = 0; i < capacity; i++) {
+            messages[i].role = nullptr;
+            messages[i].content = nullptr;
+        }
+        Serial.printf("ConversationHistory initialized with capacity: %d\n", capacity);
+    } else {
+        Serial.println("Error: Failed to allocate memory for ConversationHistory!");
+    }
+}
+
+// 析构函数
+ConversationHistory::~ConversationHistory() {
+    clear();
+    if (messages) {
+        free(messages);
+        messages = nullptr;
+    }
+}
+
+// 添加新消息
+void ConversationHistory::addMessage(const String& role, const String& content) {
+    if (!messages) return;
+    
+    // 计算实际存储位置（环形缓冲）
+    size_t index;
+    if (count < capacity) {
+        // 还未满，直接追加
+        index = count;
+        count++;
+    } else {
+        // 已满，覆盖最旧的消息
+        index = startIndex;
+        // 释放被覆盖消息的内存
+        if (messages[index].role) {
+            free(messages[index].role);
+            messages[index].role = nullptr;
+        }
+        if (messages[index].content) {
+            free(messages[index].content);
+            messages[index].content = nullptr;
+        }
+        // 移动起始索引
+        startIndex = (startIndex + 1) % capacity;
+    }
+    
+    // 分配并拷贝role
+    size_t roleLen = role.length() + 1;
+    messages[index].role = (char*)ps_malloc(roleLen);
+    if (messages[index].role) {
+        strncpy(messages[index].role, role.c_str(), roleLen);
+        messages[index].role[roleLen - 1] = '\0';
+    }
+    
+    // 分配并拷贝content
+    size_t contentLen = content.length() + 1;
+    messages[index].content = (char*)ps_malloc(contentLen);
+    if (messages[index].content) {
+        strncpy(messages[index].content, content.c_str(), contentLen);
+        messages[index].content[contentLen - 1] = '\0';
+    }
+    
+    Serial.printf("Added message to history (count: %d/%d): %s\n", count, capacity, role.c_str());
+}
+
+// 清除所有消息
+void ConversationHistory::clear() {
+    if (!messages) return;
+    
+    for (size_t i = 0; i < capacity; i++) {
+        if (messages[i].role) {
+            free(messages[i].role);
+            messages[i].role = nullptr;
+        }
+        if (messages[i].content) {
+            free(messages[i].content);
+            messages[i].content = nullptr;
+        }
+    }
+    count = 0;
+    startIndex = 0;
+    Serial.println("Conversation history cleared.");
+}
+
+// 获取消息数量
+size_t ConversationHistory::getMessageCount() const {
+    return count;
+}
+
+// 将历史消息填充到JSON数组
+void ConversationHistory::getMessages(JsonArray& messagesArray) {
+    if (!messages || count == 0) return;
+    
+    // 按正确顺序添加消息
+    for (size_t i = 0; i < count; i++) {
+        size_t index = (startIndex + i) % capacity;
+        if (messages[index].role && messages[index].content) {
+            JsonObject msg = messagesArray.add<JsonObject>();
+            msg["role"] = messages[index].role;
+            msg["content"] = messages[index].content;
+        }
+    }
+    
+    Serial.printf("Retrieved %d messages from history\n", count);
+}
+
+// ==================== LLMManager 类实现 ====================
+
 // 用于配置网络超时的常量
 const unsigned long NETWORK_TIMEOUT = 40000;  // 40秒（网络请求总超时）
 const unsigned long STREAM_TIMEOUT = 40000;   // 流读取超时40秒（给LLM生成留足时间）
@@ -20,7 +136,7 @@ const char* OPENAI_API_HOST = "api.openai.com";
 
 // 构造函数
 LLMManager::LLMManager(ConfigManager& config, AppWiFiManager& wifi, UsbShellManager* usbShellManager)
-    : configManager(config), wifiManager(wifi), _usbShellManager(usbShellManager) {
+    : configManager(config), wifiManager(wifi), _usbShellManager(usbShellManager), currentMode(CHAT_MODE) {
     // 创建 LLM 请求队列，用于接收来自其他模块的请求（优化：减少队列深度为3）
     llmRequestQueue = xQueueCreate(3, sizeof(LLMRequest));
     // 创建 LLM 响应队列，用于发送处理完的响应给请求者（优化：减少队列深度为3）
@@ -30,6 +146,9 @@ LLMManager::LLMManager(ConfigManager& config, AppWiFiManager& wifi, UsbShellMana
     if (llmRequestQueue == NULL || llmResponseQueue == NULL) {
         Serial.println("Error creating LLM queues!");
     }
+    
+    // 初始化对话历史（容量40，支持约20轮对话）
+    conversationHistory = new ConversationHistory(40);
 }
 
 // ==================== 辅助函数实现 ====================
@@ -138,6 +257,14 @@ String LLMManager::getCurrentModelName() {
     return currentModel;
 }
 
+// 清除对话历史
+void LLMManager::clearConversationHistory() {
+    if (conversationHistory) {
+        conversationHistory->clear();
+        Serial.println("LLMManager: Conversation history cleared.");
+    }
+}
+
 // 处理来自主机的shell命令执行结果
 void LLMManager::processShellOutput(const String& requestId, const String& cmd, const String& output, const String& error, const String& status, int exitCode) {
     // 将上一个命令及其输出作为上下文，构建新的提示
@@ -195,19 +322,26 @@ String LLMManager::getOpenAILikeResponse(const String& requestId, const String& 
     JsonDocument doc;
     doc["model"] = currentModel;
 
+    // 构建消息数组
+    JsonArray messages = doc["messages"].to<JsonArray>();
+    
+    // 1. 添加系统提示
     String systemPrompt = generateSystemPrompt(mode);
     if (systemPrompt.length() > 0) {
-        doc["messages"].add<JsonObject>();
-        doc["messages"][0]["role"] = "system";
-        doc["messages"][0]["content"] = systemPrompt;
-        doc["messages"].add<JsonObject>();
-        doc["messages"][1]["role"] = "user";
-        doc["messages"][1]["content"] = prompt;
-    } else {
-        doc["messages"].add<JsonObject>();
-        doc["messages"][0]["role"] = "user";
-        doc["messages"][0]["content"] = prompt;
+        JsonObject sysMsg = messages.add<JsonObject>();
+        sysMsg["role"] = "system";
+        sysMsg["content"] = systemPrompt;
     }
+    
+    // 2. 添加对话历史
+    if (conversationHistory) {
+        conversationHistory->getMessages(messages);
+    }
+    
+    // 3. 添加当前用户输入
+    JsonObject currentMsg = messages.add<JsonObject>();
+    currentMsg["role"] = "user";
+    currentMsg["content"] = prompt;
 
     String requestBody;
     serializeJson(doc, requestBody);
@@ -510,7 +644,7 @@ String LLMManager::generateSystemPrompt(LLMMode mode) {
 }
 
 // 处理 LLM 的原始响应，解析工具调用或自然语言回复。
-void LLMManager::handleLLMRawResponse(const String& requestId, const String& llmContentString) {
+void LLMManager::handleLLMRawResponse(const String& requestId, const String& prompt, const String& llmContentString) {
     LLMResponse response;
     memset(&response, 0, sizeof(LLMResponse));
     
@@ -577,6 +711,12 @@ void LLMManager::handleLLMRawResponse(const String& requestId, const String& llm
         }
     }
 
+    // 保存用户输入和AI回复到对话历史
+    if (conversationHistory) {
+        conversationHistory->addMessage("user", prompt);
+        conversationHistory->addMessage("assistant", llmContentString);
+    }
+    
     // 发送响应到队列
     if (xQueueSend(llmResponseQueue, &response, 0) != pdPASS) {
         Serial.println("handleLLMRawResponse: Failed to send response to queue.");
@@ -604,8 +744,8 @@ void LLMManager::loop() {
             String llmContent = generateResponse(requestIdStr, promptStr, request.mode);
             Serial.printf("LLMTask: Generated content: %s\n", llmContent.c_str());
 
-            // 处理LLM的原始响应，解析工具调用或自然语言回复
-            handleLLMRawResponse(requestIdStr, llmContent);
+            // 处理LLM的原始响应，解析工具调用或自然语言回复（传递prompt用于保存历史）
+            handleLLMRawResponse(requestIdStr, promptStr, llmContent);
             
             // 释放请求的prompt内存（接收方负责释放）
             free(request.prompt);
@@ -614,4 +754,15 @@ void LLMManager::loop() {
             Serial.println("LLMTask: Received request with NULL prompt, skipping.");
         }
     }
+}
+
+// 获取当前 LLM 模式
+String LLMManager::getCurrentMode() const {
+    return (currentMode == CHAT_MODE) ? "Chat" : "Advanced";
+}
+
+// 设置 LLM 模式
+void LLMManager::setCurrentMode(LLMMode mode) {
+    currentMode = mode;
+    Serial.printf("LLM Mode changed to: %s\n", getCurrentMode().c_str());
 }

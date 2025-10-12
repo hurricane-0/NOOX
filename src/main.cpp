@@ -4,7 +4,6 @@
 #include "wifi_manager.h"
 #include "ui_manager.h"
 #include "llm_manager.h"
-#include "task_manager.h"
 #include "hid_manager.h"
 #include "web_manager.h"
 #include "config_manager.h"
@@ -24,11 +23,7 @@ HIDManager hidManager;
 LLMManager* llmManagerPtr;
 UsbShellManager* usbShellManagerPtr;
 WebManager* webManagerPtr; // Declare WebManager pointer
-
-TaskManager taskManager(hidManager, wifiManager, hardwareManager);
-// UIManager uiManager(hardwareManager, wifiManager, taskManager); // Old constructor call
-// Declare UIManager after llmManagerPtr is instantiated
-UIManager* uiManagerPtr;
+UIManager* uiManagerPtr; // Declare UIManager pointer
 
 // Task for WebManager
 void webTask(void* pvParameters) {
@@ -85,12 +80,12 @@ void setup() {
     llmManagerPtr->begin();
     
     // Instantiate UIManager after LLMManager is ready
-    uiManagerPtr = new UIManager(hardwareManager, wifiManager, taskManager, *llmManagerPtr);
+    uiManagerPtr = new UIManager(hardwareManager, wifiManager, *llmManagerPtr);
     uiManagerPtr->begin();
 
     hidManager.begin();
     // Instantiate WebManager after LLMManager and UsbShellManager are initialized
-    webManagerPtr = new WebManager(*llmManagerPtr, taskManager, wifiManager, configManager);
+    webManagerPtr = new WebManager(*llmManagerPtr, wifiManager, configManager);
     webManagerPtr->begin();
 
     // Initialize LittleFS for MSD

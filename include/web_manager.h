@@ -10,7 +10,6 @@
 
 #include <ESPAsyncWebServer.h>
 #include "llm_manager.h"
-#include "task_manager.h"
 #include "wifi_manager.h"
 #include "config_manager.h"
 #include <ArduinoJson.h>
@@ -24,7 +23,7 @@ public:
     /**
      * @brief 构造函数。
      */
-    WebManager(LLMManager& llm, TaskManager& task, AppWiFiManager& wifi, ConfigManager& config);
+    WebManager(LLMManager& llm, AppWiFiManager& wifi, ConfigManager& config);
 
     /**
      * @brief 初始化 Web 管理器。
@@ -48,7 +47,6 @@ public:
 
 private:
     LLMManager& llmManager;
-    TaskManager& taskManager;
     AppWiFiManager& wifiManager;
     ConfigManager& configManager;
     AsyncWebServer server;

@@ -3,7 +3,6 @@
 
 #include "hardware_manager.h"
 #include "wifi_manager.h"   // Include WiFiManager
-#include "task_manager.h"   // Include TaskManager
 #include "llm_manager.h"    // Include LLMManager
 
 // Define UI states for different screens
@@ -16,14 +15,13 @@ enum UIState {
 
 class UIManager {
 public:
-    UIManager(HardwareManager& hw, AppWiFiManager& wifi, TaskManager& task, LLMManager& llm);
+    UIManager(HardwareManager& hw, AppWiFiManager& wifi, LLMManager& llm);
     void begin();
     void update();
 
 private:
     HardwareManager& hardware;
     AppWiFiManager& wifi;
-    TaskManager& taskManager;
     LLMManager& llmManager; // Reference to LLMManager
 
     UIState currentState = UI_STATE_STATUS; // Initial state

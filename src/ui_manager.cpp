@@ -7,8 +7,8 @@
 static unsigned long lastButtonPressTime = 0;
 const unsigned long DEBOUNCE_DELAY = 200;
 
-UIManager::UIManager(HardwareManager& hw, AppWiFiManager& wifi, TaskManager& task, LLMManager& llm)
-    : hardware(hw), wifi(wifi), taskManager(task), llmManager(llm), currentState(UI_STATE_STATUS) {}
+UIManager::UIManager(HardwareManager& hw, AppWiFiManager& wifi, LLMManager& llm)
+    : hardware(hw), wifi(wifi), llmManager(llm), currentState(UI_STATE_STATUS) {}
 
 void UIManager::begin() {
     hardware.getDisplay().clearBuffer();
@@ -164,7 +164,7 @@ void UIManager::drawStatusScreen() {
         hardware.getDisplay().setFont(u8g2_font_ncenB08_tr);
         
         // Get information
-        String currentMode = taskManager.getCurrentLLMMode();
+        String currentMode = llmManager.getCurrentMode();
         String currentModel = llmManager.getCurrentModelName();
         String wifiSSID = wifi.getSSID();
         String ipAddress = wifi.getIPAddress();

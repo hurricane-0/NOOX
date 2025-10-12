@@ -1,13 +1,12 @@
 #include "web_manager.h"
-#include "task_manager.h"
 #include "wifi_manager.h"
 #include <ArduinoJson.h>
 #include <AsyncJson.h>
 #include <LittleFS.h>
 
 // Constructor
-WebManager::WebManager(LLMManager& llm, TaskManager& task, AppWiFiManager& wifi, ConfigManager& config) 
-    : llmManager(llm), taskManager(task), wifiManager(wifi), configManager(config), server(80), ws("/ws"),
+WebManager::WebManager(LLMManager& llm, AppWiFiManager& wifi, ConfigManager& config) 
+    : llmManager(llm), wifiManager(wifi), configManager(config), server(80), ws("/ws"),
       currentLLMMode(CHAT_MODE) {
 }
 
@@ -128,7 +127,7 @@ bool WebManager::createAndSendLLMRequest(const String& requestId, const String& 
 
 void WebManager::setLLMMode(LLMMode mode) {
     currentLLMMode = mode;
-    taskManager.setLLMMode((mode == CHAT_MODE) ? "Chat" : "Advanced");
+    llmManager.setCurrentMode(mode);
     Serial.printf("LLM Mode set to %s\n", (mode == CHAT_MODE ? "CHAT_MODE" : "ADVANCED_MODE"));
 }
 
@@ -164,6 +163,10 @@ void WebManager::handleWebSocketData(AsyncWebSocketClient * client, void *arg, u
                 client->text("{\"type\":\"chat_message\", \"sender\":\"bot\", \"text\":\"Error: Failed to process request.\"}");
             }
             // 实际响应将通过broadcast发送
+        } else if (type == "clear_history") {
+            // 清除对话历史
+            llmManager.clearConversationHistory();
+            client->text("{\"type\":\"history_cleared\", \"status\":\"success\", \"message\":\"对话历史已清除\"}");
         }
     }
 }

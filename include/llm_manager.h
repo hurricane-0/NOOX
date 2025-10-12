@@ -59,6 +59,64 @@ struct LLMResponse {
 };
 
 /**
+ * @brief 对话消息结构（使用PSRAM）
+ */
+struct ConversationMessage {
+    char* role;      ///< 消息角色："user" 或 "assistant"
+    char* content;   ///< 消息内容（PSRAM指针）
+};
+
+/**
+ * @brief 对话历史管理类
+ * 
+ * 使用环形缓冲区存储最近的对话消息，超过容量时自动覆盖最旧的消息。
+ * 所有消息内容存储在PSRAM中，避免DRAM压力。
+ */
+class ConversationHistory {
+private:
+    ConversationMessage* messages;  ///< PSRAM数组，存储消息
+    size_t capacity;                ///< 最大容量（默认40条消息）
+    size_t count;                   ///< 当前消息数量
+    size_t startIndex;              ///< 环形缓冲区起始索引
+    
+public:
+    /**
+     * @brief 构造函数
+     * @param maxMessages 最大消息数量，默认40（支持约20轮对话）
+     */
+    ConversationHistory(size_t maxMessages = 40);
+    
+    /**
+     * @brief 析构函数，释放所有分配的内存
+     */
+    ~ConversationHistory();
+    
+    /**
+     * @brief 添加新消息到历史
+     * @param role 消息角色（"user" 或 "assistant"）
+     * @param content 消息内容
+     */
+    void addMessage(const String& role, const String& content);
+    
+    /**
+     * @brief 清除所有对话历史
+     */
+    void clear();
+    
+    /**
+     * @brief 获取当前消息数量
+     * @return 消息数量
+     */
+    size_t getMessageCount() const;
+    
+    /**
+     * @brief 将所有历史消息填充到JSON数组中
+     * @param messagesArray 目标JSON数组
+     */
+    void getMessages(JsonArray& messagesArray);
+};
+
+/**
  * @brief LLMManager 类，用于管理与大型语言模型的交互。
  *
  * 此类封装了与 LLM API 通信的所有逻辑，包括构建请求、发送HTTP请求、
@@ -108,6 +166,24 @@ public:
     void processShellOutput(const String& requestId, const String& cmd, const String& output, const String& error, const String& status, int exitCode);
 
     String getCurrentModelName(); // Added to get current LLM model name
+    
+    /**
+     * @brief 清除对话历史
+     *        清除所有已保存的对话消息，重置对话上下文
+     */
+    void clearConversationHistory();
+
+    /**
+     * @brief 获取当前 LLM 模式
+     * @return 当前模式的字符串表示（"Chat" 或 "Advanced"）
+     */
+    String getCurrentMode() const;
+
+    /**
+     * @brief 设置 LLM 模式
+     * @param mode 要设置的模式
+     */
+    void setCurrentMode(LLMMode mode);
 
     QueueHandle_t llmRequestQueue;  ///< LLM 请求队列的句柄。
     QueueHandle_t llmResponseQueue; ///< LLM 响应队列的句柄。
@@ -120,6 +196,8 @@ private:
     String currentProvider;       ///< 当前使用的 LLM 提供商名称。
     String currentModel;          ///< 当前使用的模型名称。
     String currentApiKey;         ///< 当前提供商的 API 密钥。
+    ConversationHistory* conversationHistory; ///< 对话历史管理对象
+    LLMMode currentMode;          ///< 当前 LLM 模式（Chat 或 Advanced）
 
 
     /**
@@ -155,9 +233,10 @@ private:
     /**
      * @brief 处理 LLM 的原始响应，解析工具调用或自然语言回复。
      * @param requestId 请求ID。
+     * @param prompt 用户输入的提示。
      * @param llmContentString LLM 返回的原始 JSON 字符串。
      */
-    void handleLLMRawResponse(const String& requestId, const String& llmContentString);
+    void handleLLMRawResponse(const String& requestId, const String& prompt, const String& llmContentString);
 
     /**
      * @brief 安全地分配PSRAM内存并拷贝字符串。
