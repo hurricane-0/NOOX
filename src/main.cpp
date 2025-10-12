@@ -128,7 +128,7 @@ void setup() {
     xTaskCreatePinnedToCore(webTask, "WebTask", 4096, NULL, 2, NULL, 0);
     xTaskCreatePinnedToCore(uiTask, "UITask", 4096, NULL, 2, NULL, 1);
     xTaskCreatePinnedToCore(usbTask, "USBTask", 4096, NULL, 2, NULL, 1);
-    xTaskCreatePinnedToCore(llmTask, "LLMTask", 8192 * 2, NULL, 2, NULL, 1);
+    xTaskCreatePinnedToCore(llmTask, "LLMTask", 8192 * 4, NULL, 2, NULL, 1);
 
     Serial.println("Setup complete. Starting main loop...");
 }

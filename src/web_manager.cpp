@@ -57,28 +57,73 @@ void WebManager::loop() {
             responseDoc["type"] = "tool_call";
             responseDoc["tool_name"] = response.toolName;
             // toolArgs is already a JSON string, so parse it back to JsonObject
-            JsonDocument argsDoc;
-            DeserializationError argsError = deserializeJson(argsDoc, response.toolArgs);
-            if (!argsError) {
-                responseDoc["tool_args"] = argsDoc.as<JsonObject>();
-            } else {
-                Serial.printf("WebManager: Failed to parse toolArgs JSON: %s\n", argsError.c_str());
-                responseDoc["tool_args"] = response.toolArgs; // Send as raw string if parsing fails
+            if (response.toolArgs) {
+                JsonDocument argsDoc;
+                DeserializationError argsError = deserializeJson(argsDoc, response.toolArgs);
+                if (!argsError) {
+                    responseDoc["tool_args"] = argsDoc.as<JsonObject>();
+                } else {
+                    Serial.printf("WebManager: Failed to parse toolArgs JSON: %s\n", argsError.c_str());
+                    responseDoc["tool_args"] = response.toolArgs; // Send as raw string if parsing fails
+                }
             }
             serializeJson(responseDoc, responseStr);
             broadcast(responseStr);
         } else {
             responseDoc["type"] = "chat_message";
             responseDoc["sender"] = "bot";
-            responseDoc["text"] = response.naturalLanguageResponse;
+            if (response.naturalLanguageResponse) {
+                responseDoc["text"] = response.naturalLanguageResponse;
+            } else {
+                responseDoc["text"] = "";
+            }
             serializeJson(responseDoc, responseStr);
             broadcast(responseStr);
+        }
+        
+        // 释放响应中分配的内存（接收方负责释放）
+        if (response.toolArgs) {
+            free(response.toolArgs);
+            response.toolArgs = nullptr;
+        }
+        if (response.naturalLanguageResponse) {
+            free(response.naturalLanguageResponse);
+            response.naturalLanguageResponse = nullptr;
         }
     }
 }
 
 void WebManager::broadcast(const String& message) {
     ws.textAll(message);
+}
+
+// 创建并发送LLM请求的辅助方法
+bool WebManager::createAndSendLLMRequest(const String& requestId, const String& payload, LLMMode mode) {
+    LLMRequest request;
+    memset(&request, 0, sizeof(LLMRequest));
+    
+    // 安全拷贝requestId（Web请求通常为空）
+    strncpy(request.requestId, requestId.c_str(), sizeof(request.requestId) - 1);
+    request.requestId[sizeof(request.requestId) - 1] = '\0';
+    
+    // 使用PSRAM分配prompt内存
+    size_t promptLen = payload.length() + 1;
+    request.prompt = (char*)ps_malloc(promptLen);
+    if (!request.prompt) {
+        return false; // 内存分配失败
+    }
+    strncpy(request.prompt, payload.c_str(), promptLen);
+    request.prompt[promptLen - 1] = '\0';
+    
+    request.mode = mode;
+    
+    // 发送到队列
+    if (xQueueSend(llmManager.llmRequestQueue, &request, 0) != pdPASS) {
+        free(request.prompt); // 发送失败，释放内存
+        return false;
+    }
+    
+    return true;
 }
 
 void WebManager::setLLMMode(LLMMode mode) {
@@ -113,12 +158,12 @@ void WebManager::handleWebSocketData(AsyncWebSocketClient * client, void *arg, u
             client->text("{\"type\":\"llm_mode_set\", \"status\":\"success\", \"mode\":\"" + modeStr + "\"}");
         } else if (type == "chat_message") {
             String payload = doc["payload"].as<String>();
-            LLMRequest request = { "", payload, currentLLMMode }; // Corrected initialization order and added empty requestId
-            if (xQueueSend(llmManager.llmRequestQueue, &request, 0) != pdPASS) {
-                client->text("{\"type\":\"chat_message\", \"sender\":\"bot\", \"text\":\"Error: LLM queue full.\"}");
-            } else {
-                // Acknowledgment can be sent, but the actual response will come via broadcast
+            
+            // 使用辅助函数创建并发送LLM请求
+            if (!createAndSendLLMRequest("", payload, currentLLMMode)) {
+                client->text("{\"type\":\"chat_message\", \"sender\":\"bot\", \"text\":\"Error: Failed to process request.\"}");
             }
+            // 实际响应将通过broadcast发送
         }
     }
 }

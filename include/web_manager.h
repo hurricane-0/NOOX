@@ -71,6 +71,15 @@ private:
      * @brief 设置 Web 服务器的路由。
      */
     void setupRoutes();
+
+    /**
+     * @brief 创建并发送LLM请求的辅助方法。
+     * @param requestId 请求ID。
+     * @param payload 用户输入的内容。
+     * @param mode LLM模式。
+     * @return 成功返回true，失败返回false。
+     */
+    bool createAndSendLLMRequest(const String& requestId, const String& payload, LLMMode mode);
 };
 
 #endif // WEB_MANAGER_H

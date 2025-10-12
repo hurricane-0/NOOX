@@ -38,22 +38,24 @@ enum LLMMode {
 
 /**
  * @brief 定义发送到 LLM 任务队列的请求结构体。
+ * 使用固定大小char数组和PSRAM指针以避免String浅拷贝导致的堆损坏。
  */
 struct LLMRequest {
-    String requestId;           ///< 请求ID，用于关联响应
-    String prompt;              ///< 用户输入的提示或上下文
+    char requestId[64];         ///< 请求ID，用于关联响应（固定大小）
+    char* prompt;               ///< 用户输入的提示或上下文（PSRAM指针，接收方需释放）
     LLMMode mode;               ///< LLM 的操作模式
 };
 
 /**
  * @brief 定义从 LLM 任务队列接收的响应结构体。
+ * 使用固定大小char数组和PSRAM指针以避免String浅拷贝导致的堆损坏。
  */
 struct LLMResponse {
-    String requestId;           ///< 请求ID，用于关联响应
+    char requestId[64];         ///< 请求ID，用于关联响应（固定大小）
     bool isToolCall;            ///< 指示响应是否为工具调用
-    String toolName;            ///< 如果是工具调用，则为工具名称
-    String toolArgs;            ///< 如果是工具调用，则为工具参数的JSON字符串
-    String naturalLanguageResponse; ///< 如果是自然语言回复，则为回复内容
+    char toolName[32];          ///< 如果是工具调用，则为工具名称（固定大小）
+    char* toolArgs;             ///< 如果是工具调用，则为工具参数的JSON字符串（PSRAM指针，接收方需释放）
+    char* naturalLanguageResponse; ///< 如果是自然语言回复，则为回复内容（PSRAM指针，接收方需释放）
 };
 
 /**
@@ -151,19 +153,34 @@ private:
     String generateSystemPrompt(LLMMode mode);
 
     /**
-     * @brief 获取工具的描述字符串。
-     *        将可用的工具列表格式化成一段文本，供系统提示使用。
-     * @param authorizedTools 授权工具的 JSON 数组。
-     * @return 工具描述字符串。
-     */
-    String getToolDescriptions();
-
-    /**
      * @brief 处理 LLM 的原始响应，解析工具调用或自然语言回复。
      * @param requestId 请求ID。
      * @param llmContentString LLM 返回的原始 JSON 字符串。
      */
     void handleLLMRawResponse(const String& requestId, const String& llmContentString);
+
+    /**
+     * @brief 安全地分配PSRAM内存并拷贝字符串。
+     * @param str 要拷贝的String对象。
+     * @return 分配的内存指针，失败返回nullptr。
+     */
+    char* allocateAndCopy(const String& str);
+
+    /**
+     * @brief 创建并发送LLM请求到队列的通用方法。
+     * @param requestId 请求ID。
+     * @param prompt 提示内容。
+     * @param mode LLM模式。
+     * @return 成功返回true，失败返回false。
+     */
+    bool createAndSendRequest(const String& requestId, const String& prompt, LLMMode mode);
+
+    /**
+     * @brief 分配响应字符串内存的辅助方法。
+     * @param dest 目标指针引用。
+     * @param src 源字符串。
+     */
+    void allocateResponseString(char*& dest, const String& src);
 };
 
 #endif // LLM_MANAGER_H
