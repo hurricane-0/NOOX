@@ -1074,7 +1074,7 @@ void LLMManager::loop() {
 
     // 检查队列中是否有请求，非阻塞
     if (xQueueReceive(llmRequestQueue, &request, 0) == pdPASS) {
-        Serial.printf("LLMTask: Received request for prompt: %s (requestId: %s)\n", request.prompt ? request.prompt : "NULL", request.requestId);
+    Serial.printf("LLMTask: Received request for prompt: %s (requestId: %s)\n", request.prompt ? request.prompt : "NULL", request.requestId);
         
         if (request.prompt) {
             // 将char*转换为String用于generateResponse函数

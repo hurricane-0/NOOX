@@ -19,10 +19,8 @@
 5. [OLED 界面操作](#5-oled-界面操作)
 6. [USB Shell 交互](#6-usb-shell-交互)
 7. [LLM 功能详解](#7-llm-功能详解)
-8. [高级功能](#8-高级功能)
-9. [故障排除](#9-故障排除)
-10. [最佳实践](#10-最佳实践)
-11. [API 集成](#11-api-集成)
+8. [故障排除](#8-故障排除)
+9. [最佳实践](#9-最佳实践)
 
 ---
 
@@ -1021,12 +1019,6 @@ readme.txt
 
 **官网**: https://platform.deepseek.com
 
-**特点**:
-- ✅ 免费额度：200万 tokens/天
-- ✅ 中文支持优秀
-- ✅ 推理能力强
-- ⚡ 响应速度快
-
 **推荐模型**:
 - `deepseek-chat`: 通用对话模型
 - `deepseek-reasoner`: 深度推理模型
@@ -1042,16 +1034,6 @@ readme.txt
 
 **官网**: https://openrouter.ai
 
-**特点**:
-- ✅ 聚合多种模型（DeepSeek, Qwen, Gemini 等）
-- ✅ 部分模型免费
-- ✅ 统一 API 接口
-- 🌐 国际化支持
-
-**推荐免费模型**:
-- `z-ai/glm-4.5-air:free`: 智谱 AI 免费模型
-- `qwen/qwen3-235b-a22b:free`: 通义千问免费模型
-- `deepseek/deepseek-chat-v3.1:free`: DeepSeek 免费版本
 
 **获取 API Key**:
 
@@ -1064,15 +1046,6 @@ readme.txt
 
 **官网**: https://platform.openai.com
 
-**特点**:
-- 🏆 最强大的模型
-- 🌍 全球使用最广
-- 💰 完全付费（无免费额度）
-- 🚀 持续更新
-
-**推荐模型**:
-- `gpt-4o`: GPT-4 系列最新版本
-- `gpt-3.5-turbo`: 性价比高
 
 **获取 API Key**:
 
@@ -1368,272 +1341,9 @@ Mem: 45% (280KB)
 
 ---
 
-## 8. 高级功能
+## 8. 故障排除
 
-### 8.1 自定义系统提示词
-
-#### 什么是系统提示词？
-
-系统提示词是发送给 LLM 的首条消息，用于定义 AI 的角色、行为和能力。
-
-**默认系统提示词**:
-
-**聊天模式**:
-
-```
-你是一个友善、热情、乐于助人的AI助手。
-请用简洁、自然的语言回答用户的问题。
-```
-
-**高级模式**:
-
-```
-你是一个高级AI助手，能够调用以下工具来完成任务：
-
-## 工具：execute_shell_command
-描述：在用户的计算机上执行 Shell 命令
-参数：{ "command": "要执行的命令" }
-使用时机：当用户要求操作文件、查看系统信息、运行程序时
-
-## 工具：control_keyboard
-描述：模拟键盘按键，输入文本或快捷键
-参数：{ "action": "type|press", "value": "内容或按键组合" }
-示例：{ "action": "press", "value": "Ctrl+C" }
-使用时机：当用户要求打开应用、复制粘贴、触发快捷键时
-
-## 工具：control_gpio
-描述：控制ESP32的GPIO输出状态
-参数：{ "gpio": "led1|led2|led3|gpio1|gpio2", "state": true|false }
-使用时机：当用户要求控制设备指示灯或GPIO时
-
-请根据用户的需求，智能选择合适的工具来完成任务。
-```
-
-#### 自定义提示词
-
-**修改位置**: `src/llm_manager.cpp`
-
-**函数**: `LLMManager::generateSystemPrompt(LLMMode mode)`
-
-**示例**:
-
-```cpp
-String LLMManager::generateSystemPrompt(LLMMode mode) {
-    if (mode == CHAT_MODE) {
-        // 自定义聊天模式提示词
-        return "你是一个专业的技术顾问，擅长解答编程和硬件相关问题。"
-               "请用专业但易懂的语言回答，必要时提供代码示例。";
-    } else {
-        // 自定义高级模式提示词
-        String prompt = "你是一个自动化专家，能够使用以下工具：\n\n";
-        // ... 添加工具描述
-        return prompt;
-    }
-}
-```
-
-**重新编译**:
-
-```bash
-pio run --target upload
-```
-
-### 8.2 添加新工具
-
-#### 步骤 1：定义工具函数
-
-在 `src/llm_manager.cpp` 的 `handleLLMRawResponse()` 函数中添加工具处理逻辑。
-
-**示例：添加 "control_mouse" 工具**
-
-```cpp
-void LLMManager::handleLLMRawResponse(const String& requestId, const String& prompt, const String& llmContentString) {
-    // ... 现有代码
-    
-    if (toolName == "control_mouse") {
-        // 解析参数
-        String action = toolCallObj["arguments"]["action"] | "";
-        int x = toolCallObj["arguments"]["x"] | 0;
-        int y = toolCallObj["arguments"]["y"] | 0;
-        int button = toolCallObj["arguments"]["button"] | 1;
-        
-        // 执行工具
-        if (action == "move") {
-            _hidManager->moveMouse(x, y);
-            toolResult = "鼠标已移动到 (" + String(x) + ", " + String(y) + ")";
-        } else if (action == "click") {
-            _hidManager->clickMouse(button);
-            toolResult = "鼠标已点击按钮 " + String(button);
-        }
-        
-        // 记录日志
-        Serial.printf("Tool: control_mouse, Result: %s\n", toolResult.c_str());
-    }
-    
-    // ... 其他工具
-}
-```
-
-#### 步骤 2：添加工具描述
-
-在 `generateSystemPrompt()` 函数中添加工具描述：
-
-```cpp
-String prompt = "你是一个高级AI助手，能够调用以下工具：\n\n";
-
-// ... 现有工具
-
-prompt += "## 工具：control_mouse\n";
-prompt += "描述：控制鼠标移动和点击\n";
-prompt += "参数：\n";
-prompt += "  - action: \"move\" 或 \"click\"\n";
-prompt += "  - x, y: 鼠标坐标（当 action=move 时）\n";
-prompt += "  - button: 鼠标按钮（1=左键, 2=右键, 3=中键，当 action=click 时）\n";
-prompt += "使用时机：当用户要求移动鼠标或点击时\n\n";
-```
-
-#### 步骤 3：测试
-
-1. 重新编译并上传固件
-2. 切换到高级模式
-3. 发送测试消息：
-
-```
-User: 移动鼠标到坐标 (100, 200)
-AI: [调用工具] control_mouse
-     参数: {"action": "move", "x": 100, "y": 200}
-     结果: 鼠标已移动到 (100, 200)
-```
-
-### 8.3 集成外部传感器
-
-#### 示例：连接 DHT22 温湿度传感器
-
-**硬件连接**:
-
-| DHT22 引脚 | ESP32 引脚 |
-|------------|------------|
-| VCC | 3.3V |
-| GND | GND |
-| DATA | GPIO8 |
-
-**软件集成**:
-
-**1. 安装库**:
-
-编辑 `platformio.ini`：
-
-```ini
-lib_deps =
-  ...
-  adafruit/DHT sensor library@^1.4.4
-  adafruit/Adafruit Unified Sensor@^1.1.7
-```
-
-**2. 修改代码**:
-
-在 `src/main.cpp` 中添加：
-
-```cpp
-#include <DHT.h>
-
-#define DHTPIN GPIO8
-#define DHTTYPE DHT22
-DHT dht(DHTPIN, DHTTYPE);
-
-void setup() {
-    // ... 现有代码
-    dht.begin();
-}
-
-void loop() {
-    // ... 现有代码
-    
-    // 每 10 秒读取一次
-    static unsigned long lastRead = 0;
-    if (millis() - lastRead > 10000) {
-        float temp = dht.readTemperature();
-        float humidity = dht.readHumidity();
-        
-        Serial.printf("Temperature: %.1f°C, Humidity: %.1f%%\n", temp, humidity);
-        
-        lastRead = millis();
-    }
-}
-```
-
-**3. 添加 LLM 工具**:
-
-在 `llm_manager.cpp` 中添加 `get_temperature` 工具：
-
-```cpp
-if (toolName == "get_temperature") {
-    float temp = dht.readTemperature();
-    float humidity = dht.readHumidity();
-    
-    toolResult = "当前温度: " + String(temp, 1) + "°C, 湿度: " + String(humidity, 1) + "%";
-}
-```
-
-**4. 测试**:
-
-```
-User: 现在的温度是多少？
-AI: [调用工具] get_temperature
-     结果: 当前温度: 24.5°C, 湿度: 55.3%
-```
-
-### 8.4 OTA 固件更新
-
-#### 什么是 OTA？
-
-OTA (Over-The-Air) 是一种无需 USB 连接即可更新固件的技术。
-
-#### 启用 OTA
-
-**方法 1：通过 Web 界面** (需要开发)
-
-1. 访问 Web 控制台
-2. 进入设置 → 系统更新
-3. 选择固件文件 (.bin)
-4. 点击上传并更新
-
-**方法 2：通过 PlatformIO**
-
-```bash
-# 设置 OTA 密码（可选）
-export OTA_PASSWORD="your_password"
-
-# OTA 上传
-pio run --target upload --upload-port 192.168.1.100
-```
-
-**配置 `platformio.ini`**:
-
-```ini
-upload_protocol = espota
-upload_port = 192.168.1.100
-upload_flags =
-  --auth=your_password
-```
-
-#### OTA 更新流程
-
-```
-1. 设备运行在 app0 分区
-2. OTA 新固件写入 app1 分区
-3. 验证 app1 分区完整性
-4. 标记 app1 为启动分区
-5. 重启设备
-6. 从 app1 启动新固件
-7. 如果启动失败，自动回滚到 app0
-```
-
----
-
-## 9. 故障排除
-
-### 9.1 WiFi 连接问题
+### 8.1 WiFi 连接问题
 
 #### 问题：设备无法连接 WiFi
 
@@ -1696,7 +1406,7 @@ void AppWiFiManager::begin() {
 }
 ```
 
-### 9.2 LLM API 调用失败
+### 8.2 LLM API 调用失败
 
 #### 问题：API 调用超时
 
@@ -1748,7 +1458,7 @@ const unsigned long STREAM_TIMEOUT = 60000;
 2. 确认提供商支持该模型
 3. 更新模型列表（访问提供商文档）
 
-### 9.3 OLED 显示问题
+### 8.3 OLED 显示问题
 
 #### 问题：OLED 无显示
 
@@ -1806,7 +1516,7 @@ void scanI2C() {
 hardware.getDisplay().setFont(u8g2_font_wqy12_t_gb2312);  // 中文字体
 ```
 
-### 9.4 USB Shell 问题
+### 8.4 USB Shell 问题
 
 #### 问题：主机代理无法连接设备
 
@@ -1865,7 +1575,7 @@ sudo usermod -a -G dialout $USER
 ./agent --debug
 ```
 
-### 9.5 性能问题
+### 8.5 性能问题
 
 #### 问题：设备频繁重启
 
@@ -1922,9 +1632,9 @@ sudo usermod -a -G dialout $USER
 
 ---
 
-## 10. 最佳实践
+## 9. 最佳实践
 
-### 10.1 日常使用建议
+### 9.1 日常使用建议
 
 #### 1. 定期重启设备
 
@@ -1951,52 +1661,6 @@ sudo usermod -a -G dialout $USER
 | 系统控制 | 高级模式 |
 | 设备控制 | 高级模式 |
 
-#### 4. API Key 安全
-
-**建议**:
-- 不要在公共场合展示 API Key
-- 定期更换 API Key
-- 使用环境变量或专用配置工具
-- 监控 API 使用量
-
-### 10.2 开发者建议
-
-#### 1. 版本控制
-
-**不要提交** `config.json` 到 Git：
-
-`.gitignore`:
-
-```
-data/config.json
-*.json.backup
-```
-
-**提供配置模板**:
-
-`config.json.template`:
-
-```json
-{
-  "last_used": {
-    "llm_provider": "",
-    "model": "",
-    "wifi_ssid": ""
-  },
-  "llm_providers": {
-    "deepseek": {
-      "api_key": "YOUR_API_KEY_HERE",
-      "models": ["deepseek-chat"]
-    }
-  },
-  "wifi_networks": [
-    {
-      "ssid": "YOUR_WIFI_SSID",
-      "password": "YOUR_WIFI_PASSWORD"
-    }
-  ]
-}
-```
 
 #### 2. 调试技巧
 
@@ -2041,272 +1705,6 @@ void printTaskInfo() {
 }
 ```
 
-### 10.3 安全建议
-
-#### 1. 网络安全
-
-**建议**:
-- 在信任的 WiFi 网络上使用
-- 避免在公共 WiFi 上输入敏感信息
-- 考虑添加 Web 界面身份验证
-
-#### 2. 命令执行安全
-
-**风险**: 高级模式下 AI 可以执行任意 Shell 命令
-
-**建议**:
-- 谨慎使用高级模式
-- 审查 AI 生成的命令
-- 实现命令白名单（主机代理侧）
-- 限制命令执行权限
-
-#### 3. API Key 保护
-
-**建议**:
-- 使用只读 API Key（如果提供商支持）
-- 设置 API 使用限额
-- 定期检查 API 使用情况
-- 发现泄露立即更换
-
----
-
-## 11. API 集成
-
-### 11.1 通过 WebSocket 集成
-
-#### 连接 WebSocket
-
-```javascript
-const ws = new WebSocket('ws://192.168.1.100/ws');
-
-ws.onopen = () => {
-    console.log('WebSocket connected');
-};
-
-ws.onmessage = (event) => {
-    const message = JSON.parse(event.data);
-    console.log('Received:', message);
-    
-    if (message.type === 'chat_message') {
-        console.log('Bot:', message.text);
-    } else if (message.type === 'tool_call') {
-        console.log('Tool:', message.tool_name, message.tool_args);
-    }
-};
-
-ws.onerror = (error) => {
-    console.error('WebSocket error:', error);
-};
-
-ws.onclose = () => {
-    console.log('WebSocket disconnected');
-};
-```
-
-#### 发送消息
-
-**聊天消息**:
-
-```javascript
-ws.send(JSON.stringify({
-    type: 'chat_message',
-    text: '你好，帮我列出文件'
-}));
-```
-
-**更新配置**:
-
-```javascript
-ws.send(JSON.stringify({
-    type: 'update_config',
-    config: {
-        last_used: {
-            llm_provider: 'deepseek',
-            model: 'deepseek-chat',
-            wifi_ssid: 'MyWiFi'
-        },
-        // ... 完整配置
-    }
-}));
-```
-
-**清除对话历史**:
-
-```javascript
-ws.send(JSON.stringify({
-    type: 'clear_history'
-}));
-```
-
-**控制 GPIO**:
-
-```javascript
-ws.send(JSON.stringify({
-    type: 'gpio_control',
-    gpio: 'led1',
-    state: true
-}));
-```
-
-### 11.2 通过 HTTP 集成
-
-#### 获取静态文件
-
-```bash
-curl http://192.168.1.100/
-curl http://192.168.1.100/style.css
-curl http://192.168.1.100/script.js
-```
-
-#### 获取配置 (需要添加 REST API)
-
-**示例实现**:
-
-在 `src/web_manager.cpp` 中添加：
-
-```cpp
-void WebManager::setupRoutes() {
-    // ... 现有路由
-    
-    // GET /api/config
-    server.on("/api/config", HTTP_GET, [this](AsyncWebServerRequest *request){
-        AsyncResponseStream *response = request->beginResponseStream("application/json");
-        serializeJson(configManager.getConfig(), *response);
-        request->send(response);
-    });
-    
-    // POST /api/config
-    server.on("/api/config", HTTP_POST, [](AsyncWebServerRequest *request){
-        // 处理配置更新
-    }, NULL, [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total){
-        // 处理 JSON 数据
-        JsonDocument doc;
-        deserializeJson(doc, data, len);
-        // 更新配置...
-        request->send(200, "application/json", "{\"status\":\"success\"}");
-    });
-}
-```
-
-**调用示例**:
-
-```bash
-# 获取配置
-curl http://192.168.1.100/api/config
-
-# 更新配置
-curl -X POST http://192.168.1.100/api/config \
-  -H "Content-Type: application/json" \
-  -d '{"last_used":{"llm_provider":"deepseek"}}'
-```
-
-### 11.3 通过 USB CDC 集成
-
-#### Python 示例
-
-```python
-import serial
-import json
-import uuid
-
-# 打开串口
-ser = serial.Serial('/dev/ttyACM0', 115200, timeout=1)
-
-def send_message(msg_type, payload):
-    """发送消息到 ESP32"""
-    message = {
-        "requestId": str(uuid.uuid4()),
-        "type": msg_type,
-        "payload": payload
-    }
-    ser.write((json.dumps(message) + '\n').encode())
-    print(f"Sent: {message}")
-
-def receive_message():
-    """接收 ESP32 的消息"""
-    line = ser.readline().decode('utf-8').strip()
-    if line:
-        message = json.loads(line)
-        print(f"Received: {message}")
-        return message
-    return None
-
-# 发送用户输入
-send_message("userInput", "帮我列出文件")
-
-# 接收响应
-while True:
-    msg = receive_message()
-    if msg:
-        if msg['type'] == 'shellCommand':
-            # 执行 Shell 命令
-            import subprocess
-            result = subprocess.run(
-                msg['payload'],
-                shell=True,
-                capture_output=True,
-                text=True
-            )
-            # 回传结果
-            send_message("shellCommandResult", {
-                "command": msg['payload'],
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-                "exitCode": result.returncode
-            })
-        elif msg['type'] == 'aiResponse':
-            print(f"AI: {msg['payload']}")
-            break
-```
-
----
-
-## 附录
-
-### A. 快捷键参考
-
-#### Web 界面
-
-| 快捷键 | 功能 |
-|--------|------|
-| Enter | 发送消息 |
-| Esc | 关闭设置面板 |
-| Ctrl+K | 清除对话历史 |
-
-#### OLED 界面
-
-| 按键组合 | 功能 |
-|----------|------|
-| 长按 Button A (3秒) | 重启设备 |
-| 长按 Button B (3秒) | 进入恢复模式 |
-
-### B. LED 状态速查
-
-| RGB LED 颜色 | 状态 |
-|--------------|------|
-| 🔵 蓝色闪烁 | 启动中 |
-| 🟢 绿色常亮 | WiFi 已连接 |
-| 🟡 黄色闪烁 | WiFi 连接中 |
-| 🔴 红色闪烁 | 错误 |
-| ⚪ 白色闪烁 | LLM 请求中 |
-| 🟣 紫色常亮 | OTA 更新中 |
-
-### C. 错误代码
-
-| 错误码 | 说明 | 解决方法 |
-|--------|------|----------|
-| E001 | WiFi 连接失败 | 检查 SSID 和密码 |
-| E002 | LLM API 调用失败 | 检查 API Key 和网络 |
-| E003 | 配置文件损坏 | 删除 config.json 并重启 |
-| E004 | 内存不足 | 重启设备 |
-| E005 | USB CDC 初始化失败 | 重新插拔 USB |
-
-### D. 支持资源
-
-- **项目仓库**: https://github.com/your-repo/NOOX
-- **问题反馈**: https://github.com/your-repo/NOOX/issues
-- **技术文档**: https://docs.noox.dev
-- **社区论坛**: https://forum.noox.dev
 
 ---
 

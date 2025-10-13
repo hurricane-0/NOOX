@@ -13,16 +13,35 @@ WebManager::WebManager(LLMManager& llm, AppWiFiManager& wifi, ConfigManager& con
 
 // Start web services
 void WebManager::begin() {
-    if(!LittleFS.begin(true)){
-        Serial.println("An Error has occurred while mounting LittleFS");
-        return;
+    // Note: LittleFS is already mounted in main.cpp before WebManager initialization
+    Serial.println("[WEB] Initializing web server...");
+    
+    // Check if web files exist in LittleFS
+    const char* requiredFiles[] = {"/index.html.gz", "/style.css.gz", "/script.js.gz"};
+    bool allFilesExist = true;
+    
+    for (const char* file : requiredFiles) {
+        if (!LittleFS.exists(file)) {
+            allFilesExist = false;
+            Serial.printf("[WEB] WARNING: %s not found in LittleFS\n", file);
+        }
     }
-    Serial.println("LittleFS mounted successfully.");
+    
+    if (!allFilesExist) {
+        Serial.println("[WEB] ========================================");
+        Serial.println("[WEB] ERROR: Web files missing!");
+        Serial.println("[WEB] Please run deployment script:");
+        Serial.println("[WEB]   python deploy_all.py");
+        Serial.println("[WEB] ========================================");
+    } else {
+        Serial.println("[WEB] All web files present in LittleFS");
+    }
+    
     setupRoutes();
     ws.onEvent(std::bind(&WebManager::onWebSocketEvent, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5, std::placeholders::_6));
     server.addHandler(&ws);
     server.begin();
-    Serial.println("Web server started on port 80.");
+    Serial.println("[WEB] Web server started on port 80");
 }
 
 // WebSocket cleanup and LLM response handling

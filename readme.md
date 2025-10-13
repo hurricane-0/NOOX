@@ -74,21 +74,39 @@ NOOX 是一个基于 **ESP32-S3** 的智能硬件平台，提供以下核心能�
 
 ### 快速部署
 
-#### 1. 克隆并编译
+#### 1. 克隆项目
 
 ```bash
 git clone https://github.com/your-repo/NOOX.git
 cd NOOX
-
-# 安装 PlatformIO
-
-# 编译和上传
-pio run --target upload
-pio run --target uploadfs  # 首次使用必须执行
 ```
 
+#### 2. 一键部署（推荐）
 
-#### 2. 访问 Web 界面
+```bash
+# 自动化部署脚本会完成所有步骤：
+# - 压缩 Web 文件
+# - 编译固件
+# - 上传固件
+# - 上传 LittleFS（Web 文件）
+# - 上传 FFat（Agent 文件）
+
+python deploy_all.py
+```
+
+**或者手动部署**（高级用户）：
+```bash
+# 压缩 Web 文件
+python compress_files_optimized.py
+
+# 编译和上传固件
+pio run --target upload
+
+# 手动上传文件系统（需要修改 platformio.ini）
+# 详见文档：docs/QUICKSTART_DUAL_FS.md
+```
+
+#### 3. 访问 Web 界面
 
 1. 查看 OLED 屏幕显示的 IP 地址（如 `192.168.1.100`）
 2. 在浏览器中打开该地址

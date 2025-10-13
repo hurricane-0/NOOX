@@ -4,8 +4,7 @@
       "ldscript": "esp32s3_out.ld",
       "memory_type": "qio_opi",
       "partitions": "boards/partitions_16MB_app_large.csv",
-      "psram_size": "8MB",
-      "filesystem": "littlefs"
+      "psram_size": "8MB"
     },
     "core": "esp32",
     "extra_flags": [

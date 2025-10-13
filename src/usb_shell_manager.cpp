@@ -253,35 +253,77 @@ void UsbShellManager::sendWifiConnectStatusToHost(const String& requestId, bool 
 }
 
 /**
- * @brief 模拟键盘操作启动主机代理程序
+ * @brief 模拟键盘操作启动主机代理程序（实验性功能）
  * 
- * 该方法通过HID键盘模拟执行以下操作：
- * 1. 打开运行对话框（Win+R）
- * 2. 输入代理程序命令及参数
- * 3. 按回车执行命令
+ * 【重要说明】
+ * 此功能目前存在以下问题，不建议使用：
+ * 
+ * 1. **路径问题**：agent.exe 存储在设备的 MSD（U盘）中，盘符由操作系统动态分配
+ * 2. **时序问题**：USB设备枚举需要时间，设备接入后立即运行可能找不到U盘
+ * 3. **权限问题**：某些系统可能需要管理员权限才能执行
+ * 4. **兼容性问题**：仅支持Windows，且依赖PowerShell
+ * 
+ * 【推荐做法】
+ * 1. 用户连接设备后，系统会显示"NOOX_Agent"或"NOOXDisk"U盘
+ * 2. 用户从U盘复制 noox-host-agent.exe 到本地目录（如 C:\NOOX\）
+ * 3. 用户手动运行：noox-host-agent.exe --wifi-status=disconnected
+ * 4. 或设置开机自启动（通过快捷方式或任务计划程序）
+ * 
+ * 【改进方向】
+ * 如果要实现自动启动，更好的方案是：
+ * - 提供Windows安装程序，将agent复制到Program Files并添加到PATH
+ * - 使用设备驱动程序自动安装（需要签名，成本较高）
  * 
  * @param wifiStatus 当前WiFi状态，作为代理程序的启动参数
  */
 void UsbShellManager::simulateKeyboardLaunchAgent(const String& wifiStatus) {
-    Serial.println("Simulating keyboard to launch agent...");
+    Serial.println("WARNING: simulateKeyboardLaunchAgent is experimental and may not work reliably.");
+    Serial.println("Attempting to launch agent via keyboard simulation...");
+    
     Keyboard.begin();
-    delay(1000); // 给主机时间识别HID设备
+    delay(2000); // 给主机更多时间识别所有USB设备（HID、CDC、MSC）
 
     // 在Windows系统上：
     // 1. 按Win+R打开运行对话框
-    // 2. 输入agent.exe及参数
-    // 3. 按回车执行
+    // 2. 启动PowerShell
+    // 3. 通过PowerShell脚本查找NOOX设备并运行agent.exe
     Keyboard.press(KEY_LEFT_GUI); // 按下Windows键
     Keyboard.press('r');
     Keyboard.releaseAll();
-    delay(500); // 等待运行对话框打开
+    delay(800); // 等待运行对话框打开
 
-    String command = "agent.exe --wifi-status=" + wifiStatus;
-    Keyboard.print(command);
-    delay(100);
+    // 启动PowerShell（使用-NoExit保持窗口打开以便查看错误）
+    Keyboard.print("powershell -NoExit");
+    Keyboard.press(KEY_RETURN);
+    Keyboard.releaseAll();
+    delay(4500); // 等待PowerShell窗口打开（增加延迟以适应较慢的系统）
+
+    // PowerShell脚本：
+    // 1. 查找卷标包含"NOOX"的驱动器
+    // 2. 如果找到，从该驱动器运行 noox-host-agent.exe
+    // 3. 如果未找到，提示用户手动运行
+    String psCommand = "$ErrorActionPreference='Stop'; ";
+    psCommand += "$drive = (Get-Volume | Where-Object {$_.FileSystemLabel -like '*NOOX*' -or $_.FileSystemLabel -like '*NOOXDisk*'} | Select-Object -First 1 -ExpandProperty DriveLetter); ";
+    psCommand += "if ($drive) { ";
+    psCommand += "Write-Host 'Found NOOX device on drive' $drive':'; ";
+    psCommand += "$agentPath = \"${drive}:\\noox-host-agent.exe\"; ";
+    psCommand += "if (Test-Path $agentPath) { ";
+    psCommand += "Write-Host 'Launching agent...'; ";
+    psCommand += "Start-Process $agentPath -ArgumentList '--wifi-status=" + wifiStatus + "'; ";
+    psCommand += "} else { ";
+    psCommand += "Write-Host 'Error: noox-host-agent.exe not found on NOOX device'; ";
+    psCommand += "}; ";
+    psCommand += "} else { ";
+    psCommand += "Write-Host 'Error: NOOX device not found. Please run agent manually from NOOX Disk.'; ";
+    psCommand += "}";
+    
+    Keyboard.print(psCommand);
+    delay(200);
     Keyboard.press(KEY_RETURN);
     Keyboard.releaseAll();
     delay(500);
+    
     Keyboard.end();
-    Serial.println("Keyboard simulation complete.");
+    Serial.println("Keyboard simulation complete. Check PowerShell window for results.");
+    Serial.println("If launch failed, please manually run noox-host-agent.exe from the NOOX device.");
 }

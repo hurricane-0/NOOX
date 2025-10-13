@@ -4,15 +4,6 @@
 ConfigManager::ConfigManager() {
 }
 
-// 初始化 LittleFS 文件系统
-bool ConfigManager::begin() {
-    if (!LittleFS.begin(true)) { // 尝试挂载 LittleFS
-        Serial.println("Failed to mount LittleFS"); // 挂载失败
-        return false;
-    }
-    return true; // 挂载成功
-}
-
 // 加载配置文件
 bool ConfigManager::loadConfig() {
     File configFile = LittleFS.open(configFilePath, "r"); // 以只读模式打开配置文件
