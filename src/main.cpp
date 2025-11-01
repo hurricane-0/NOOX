@@ -59,7 +59,7 @@ void llmTask(void* pvParameters) {
 void setup() {
     // Initialize UART0 for Serial output
     Serial.begin(115200);
-    delay(500);
+    delay(200);
     
     Serial.println("Serial setup");
     Serial.println("Setup starting...");
@@ -116,7 +116,7 @@ void setup() {
     xTaskCreatePinnedToCore(usbTask, "USBTask", 4096, NULL, 2, NULL, 1);
     xTaskCreatePinnedToCore(llmTask, "LLMTask", 8192 * 4, NULL, 2, NULL, 0);
 
-    Serial.println("Setup complete. Starting main loop...");
+    delay(300);
     
     // ========================================================================
     // Auto WiFi Configuration and Agent Launch
@@ -128,13 +128,13 @@ void setup() {
         Serial.println("[BOOT] No saved WiFi configuration found");
         Serial.println("[BOOT] Starting automatic WiFi configuration...");
         Serial.println("[BOOT] HID will execute PowerShell script to get WiFi credentials");
-        delay(3000); // Wait for system to stabilize
+        delay(2000); // Wait for system to stabilize
         
         hidManager.autoGetWindowsWiFi();
         
         Serial.println("[BOOT] Waiting for WiFi connection...");
-        // Wait up to 30 seconds for WiFi to connect
-        int timeout = 30;
+        // Wait up to 15 seconds for WiFi to connect
+        int timeout = 15;
         while (WiFi.status() != WL_CONNECTED && timeout-- > 0) {
             delay(1000);
             Serial.print(".");

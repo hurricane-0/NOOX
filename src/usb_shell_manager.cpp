@@ -76,6 +76,7 @@ void UsbShellManager::processWiFiCredentials(const String& message) {
         // 连接WiFi并保存
         if (_wifiManager) {
             Serial.println("[CDC] Attempting to connect to WiFi...");
+            _wifiManager->addWiFi(ssid, password);
             bool success = _wifiManager->connectToWiFi(ssid, password);
             if (success) {
                 Serial.println("[CDC] WiFi connection initiated successfully");
