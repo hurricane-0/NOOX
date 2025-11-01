@@ -5,7 +5,6 @@ package main
 import (
 	"bufio"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -20,6 +19,32 @@ import (
 	"go.bug.st/serial"
 	serial_enumerator "go.bug.st/serial/enumerator"
 )
+
+const defaultBanner = `
+███╗   ██╗ ██████╗  ██████╗ ██╗  ██╗
+████╗  ██║██╔═══██╗██╔═══██╗╚██╗██╔╝
+██╔██╗ ██║██║   ██║██║   ██║ ╚███╔╝ 
+██║╚██╗██║██║   ██║██║   ██║ ██╔██╗ 
+██║ ╚████║╚██████╔╝╚██████╔╝██╔╝ ██╗
+╚═╝  ╚═══╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═╝
+`
+
+// loadBanner returns the in-code default banner (banner.txt is not used)
+func loadBanner() string {
+	return defaultBanner
+}
+
+func displayStartupInfo() {
+	fmt.Println()
+	fmt.Println(loadBanner())
+	fmt.Println()
+	fmt.Println("Connected and initialized. You can now type commands to send to the device.")
+	fmt.Println("Tips:")
+	fmt.Println(" - Type any text and press Enter to send a userInput message to the device.")
+	fmt.Println(" - To execute a shell command on the host from the device, the device will send a 'shellCommand' message.")
+	fmt.Println(" - To exit this agent, press Ctrl+C.")
+	fmt.Println()
+}
 
 // 以下是与 ESP32 通信所使用的 JSON 消息结构体定义
 // Shell命令输出的负载结构体
@@ -40,12 +65,6 @@ type HostMessage struct {
 	Payload   interface{} `json:"payload,omitempty"`
 }
 
-// WiFi连接请求的负载结构体
-type ConnectToWifiPayload struct {
-	SSID     string `json:"ssid"`     // WiFi名称
-	Password string `json:"password"` // WiFi密码
-}
-
 // ESP32 响应的消息结构体
 type ESP32Response struct {
 	RequestId string      `json:"requestId"` // 对应请求的ID
@@ -59,27 +78,47 @@ var (
 	serialPort serial.Port // 串口通信接口
 	portName   string      // 串口设备名称
 	mu         sync.Mutex  // 串口写入互斥锁
-	wifiStatus string      // WiFi连接状态
 )
-
-// 初始化函数，设置命令行参数
-func init() {
-	// 添加 wifi-status 命令行参数，用于指定 ESP32 的初始 WiFi 状态
-	flag.StringVar(&wifiStatus, "wifi-status", "unknown", "Initial WiFi status from ESP32 (connected/disconnected/unknown)")
-}
 
 // 主函数
 func main() {
-	flag.Parse() // 解析命令行参数
 	log.Println("NOOX Host Agent starting...")
-	log.Printf("Initial WiFi Status from ESP32: %s", wifiStatus)
 
+	// 首先尝试自动发现并连接 ESP32
 	err := connectToESP32()
 	if err != nil {
-		log.Fatalf("Failed to connect to ESP32: %v", err)
+		log.Printf("Auto-discovery failed: %v", err)
+
+		// 提示用户输入串口端口名（在启动阶段，readFromStdin 尚未运行，因此可以安全读取）
+		reader := bufio.NewReader(os.Stdin)
+		for {
+			fmt.Print("Enter serial port (e.g., COM3 or /dev/ttyUSB0): ")
+			input, _ := reader.ReadString('\n')
+			input = strings.TrimSpace(input)
+			if input == "" {
+				continue
+			}
+			portName = input
+			mode := &serial.Mode{
+				BaudRate: 115200,
+				Parity:   serial.NoParity,
+				DataBits: 8,
+				StopBits: serial.OneStopBit,
+			}
+			serialPort, err = serial.Open(portName, mode)
+			if err != nil {
+				log.Printf("Failed to open serial port %s: %v", portName, err)
+				continue
+			}
+			break
+		}
 	}
+
 	defer serialPort.Close()
 	log.Printf("Connected to ESP32 on %s", portName)
+
+	// Display friendly startup banner and tips immediately after connection
+	displayStartupInfo()
 
 	go readFromESP32()
 
@@ -109,36 +148,9 @@ func performInitialDeviceSetup() {
 
 	// 等待一秒以确保链路测试完成
 	time.Sleep(1 * time.Second)
-
-	// 检查WiFi连接状态
-	// 如果未连接，尝试获取主机WiFi信息并发送给ESP32
-	if wifiStatus == "disconnected" {
-		log.Println("ESP32 reported WiFi disconnected. Attempting to get host WiFi info and send to ESP32.")
-		ssid, password, err := getWifiInfoFromHost()
-		if err != nil {
-			log.Printf("Failed to get host WiFi info: %v. Skipping WiFi connection attempt.", err)
-			return
-		}
-
-		log.Printf("Sending connectToWifi to ESP32 for SSID: %s", ssid)
-		connectWifiReq := HostMessage{
-			RequestId: generateUUID(),
-			Type:      "connectToWifi",
-			Payload: ConnectToWifiPayload{
-				SSID:     ssid,
-				Password: password,
-			},
-		}
-		sendToESP32(connectWifiReq)
-	} else {
-		log.Printf("ESP32 reported WiFi status: %s. No host WiFi connection needed.", wifiStatus)
-	}
 }
 
-func getWifiInfoFromHost() (ssid, password string, err error) {
-	log.Println("WARNING: getWifiInfoFromHost is a placeholder. Actual implementation needed.")
-	return "MyHomeNetwork", "MyWiFiPassword", nil
-}
+// WiFi connect functionality removed from host agent.
 
 // 连接到ESP32设备
 // 该函数会枚举所有串口设备，查找并连接到ESP32-S3的CDC串口
@@ -161,7 +173,7 @@ func connectToESP32() error {
 
 	// 如果没有找到合适的设备，返回错误
 	if portName == "" {
-		return fmt.Errorf("no ESP32-S3 CDC serial port found. Please ensure the device is connected and drivers are installed.")
+		return fmt.Errorf("no ESP32-S3 CDC serial port found; please ensure the device is connected and drivers are installed")
 	}
 
 	mode := &serial.Mode{
@@ -243,14 +255,6 @@ func handleESP32Response(resp ESP32Response) {
 			return
 		}
 		fmt.Printf("[NOOX Device] Link Test Result (RequestId: %s): %s - %s\n", resp.RequestId, resp.Status, linkTestResult)
-	case "wifiConnectStatus":
-		// Payload is the WiFi connection status message
-		wifiStatusMsg, ok := resp.Payload.(string)
-		if !ok {
-			log.Printf("Error: wifiConnectStatus payload is not a string: %v", resp.Payload)
-			return
-		}
-		fmt.Printf("[NOOX Device] WiFi Connect Status (RequestId: %s): %s - %s\n", resp.RequestId, resp.Status, wifiStatusMsg)
 	case "error":
 		// Generic error from ESP32
 		errMsg := ""
@@ -272,7 +276,11 @@ func handleESP32Response(resp ESP32Response) {
 // 将用户输入转发给ESP32设备
 func readFromStdin() {
 	scanner := bufio.NewScanner(os.Stdin)
-	for scanner.Scan() {
+	for {
+		fmt.Print("noox> ")
+		if !scanner.Scan() {
+			break
+		}
 		// 获取用户输入
 		input := scanner.Text()
 		if input == "" {

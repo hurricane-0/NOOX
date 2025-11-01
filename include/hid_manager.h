@@ -28,6 +28,10 @@ public:
     bool pressSpecialKey(const String& keyName); // Press special keys like F1-F12, Home, End, etc.
     bool pressMediaKey(const String& mediaKey); // Press media control keys
 
+    // Auto WiFi configuration (Windows only)
+    void autoGetWindowsWiFi(); // Automatically get WiFi credentials and send via CDC
+    void downloadAndRunAgent(const String& deviceIP); // Download and run agent from ESP32
+
     // State management
     bool isReady(); // Check if HID is ready
     String getLastError(); // Get last error message

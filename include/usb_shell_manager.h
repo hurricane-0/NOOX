@@ -21,17 +21,15 @@
 
 // 前向声明LLMManager类（AI管理器）
 class LLMManager;
-// 前向声明WiFiManager类（WiFi管理器）
-class AppWiFiManager;
+class AppWiFiManager; // 前向声明WiFi管理器
 
 class UsbShellManager {
 public:
     /**
      * @brief 构造函数
      * @param llmManager AI管理器指针
-     * @param wifiManager WiFi管理器指针
      */
-    UsbShellManager(LLMManager* llmManager, AppWiFiManager* wifiManager);
+    UsbShellManager(LLMManager* llmManager);
 
     /**
      * @brief 初始化USB设备和串口通信
@@ -48,6 +46,12 @@ public:
      * @param llmManager 新的AI管理器指针
      */
     void setLLMManager(LLMManager* llmManager);
+
+    /**
+     * @brief 设置WiFi管理器
+     * @param wifiManager WiFi管理器指针
+     */
+    void setWiFiManager(AppWiFiManager* wifiManager);
 
     // 向主机发送消息的方法
     /**
@@ -72,20 +76,6 @@ public:
      */
     void sendLinkTestResultToHost(const String& requestId, bool success, const String& payload);
 
-    /**
-     * @brief 向主机发送WiFi连接状态
-     * @param requestId 请求ID
-     * @param success 连接是否成功
-     * @param message 状态消息
-     */
-    void sendWifiConnectStatusToHost(const String& requestId, bool success, const String& message);
-
-    /**
-     * @brief 模拟键盘输入来启动主机代理程序
-     * @param wifiStatus 当前WiFi状态，将作为启动参数传递
-     */
-    void simulateKeyboardLaunchAgent(const String& wifiStatus);
-
 private:
     LLMManager* _llmManager;        // AI管理器指针
     AppWiFiManager* _wifiManager;   // WiFi管理器指针
@@ -108,6 +98,12 @@ private:
      * @param message 要发送的JSON消息
      */
     void sendToHost(const String& message);
+
+    /**
+     * @brief 处理WiFi凭证信息（格式：SSID|Password）
+     * @param message WiFi凭证字符串
+     */
+    void processWiFiCredentials(const String& message);
 };
 
 #endif // USB_SHELL_MANAGER_H

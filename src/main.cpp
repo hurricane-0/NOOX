@@ -10,12 +10,8 @@
 #include "web_manager.h"
 #include "config_manager.h"
 #include "usb_shell_manager.h" // Include UsbShellManager
-#include <USBMSC.h> // Explicitly include USBMSC for main.cpp
 #include <HttpClient.h> // 显式引入 HttpClient 以满足 LLMManager 依赖
-#include <LittleFS.h> // Include LittleFS for internal config and web files
-#include <FFat.h> // Include FFat for USBMSC (U disk)
-
-USBMSC usb_msc_driver; // Instantiate USBMSC
+#include <LittleFS.h> // Include LittleFS for internal config, web files and agent
 
 HardwareManager hardwareManager;
 ConfigManager configManager;
@@ -85,67 +81,16 @@ void setup() {
     Serial.printf("[FS]  Used:  %u bytes (%.2f MB)\n", 
                    LittleFS.usedBytes(), LittleFS.usedBytes() / 1024.0 / 1024.0);
 
-    // ========================================================================
-    // STEP 2: Initialize FFat (dedicated for USBMSC U disk)
-    // ========================================================================
-    Serial.println("[FS] Initializing FFat for USBMSC...");
-    if (!FFat.begin(true, "/ffat")) { // true = format if mount fails
-        Serial.println("[FS]  FFat Mount Failed!");
-        Serial.println("[FS]  USBMSC will not work without FFat!");
-        return;
-    }
-    Serial.println("[FS]  FFat Mounted successfully");
-    Serial.printf("[FS]  Total: %u bytes (%.2f MB)\n", 
-                   FFat.totalBytes(), FFat.totalBytes() / 1024.0 / 1024.0);
-    Serial.printf("[FS]  Used:  %u bytes (%.2f MB)\n", 
-                   FFat.usedBytes(), FFat.usedBytes() / 1024.0 / 1024.0);
-
-    // Check if agent file exists in FFat partition
-    if (!FFat.exists("/noox-host-agent.exe")) {
-        Serial.println("[FS]  noox-host-agent.exe NOT found in FFat");
-        Serial.println("[FS]  Please upload the agent file via:");
-        Serial.println("[FS]  1. PlatformIO: pio run --target uploadfs");
-        Serial.println("[FS]  2. Web interface: /upload_agent endpoint");
-    } else {
-        File agentFile = FFat.open("/noox-host-agent.exe", "r");
-        if (agentFile) {
-            Serial.printf("[FS] Agent file found: %u bytes (%.2f MB)\n", 
-                          agentFile.size(), agentFile.size() / 1024.0 / 1024.0);
-            agentFile.close();
-        }
-    }
-
-    // ========================================================================
-    // STEP 3: Initialize USBMSC (will automatically use FFat)
-    // ========================================================================
-    Serial.println("[USB] Configuring USBMSC driver...");
-    usb_msc_driver.vendorID("NOOX");      // 8 characters max
-    usb_msc_driver.productID("NOOXDisk"); // 16 characters max
-    usb_msc_driver.productRevision("1.0");
-    usb_msc_driver.mediaPresent(true);
-
-    // Calculate block count for FFat partition
-    uint32_t ffat_total = FFat.totalBytes();
-    uint16_t block_size = 512; // Standard USB MSC block size
-    uint32_t block_count = ffat_total / block_size;
-
-    // ESP32-Arduino will automatically bind USBMSC to the last mounted FAT filesystem (FFat)
-    if (usb_msc_driver.begin(block_count, block_size)) {
-        Serial.println("[USB]  USB MSC driver started successfully");
-        Serial.println("[USB]  PC will see NOOX as a removable disk");
-        Serial.println("[USB]  FFat partition is accessible via U disk");
-    } else {
-        Serial.println("[USB]  USB MSC driver failed to start");
-    }
     Serial.println("=====================================");
 
     configManager.loadConfig();
 
-    usbShellManagerPtr = new UsbShellManager(nullptr, &wifiManager);
+    usbShellManagerPtr = new UsbShellManager(nullptr);
     
     llmManagerPtr = new LLMManager(configManager, wifiManager, usbShellManagerPtr, &hidManager, &hardwareManager);
 
     usbShellManagerPtr->setLLMManager(llmManagerPtr);
+    usbShellManagerPtr->setWiFiManager(&wifiManager);
 
     wifiManager.begin();
     
@@ -172,6 +117,49 @@ void setup() {
     xTaskCreatePinnedToCore(llmTask, "LLMTask", 8192 * 4, NULL, 2, NULL, 0);
 
     Serial.println("Setup complete. Starting main loop...");
+    
+    // ========================================================================
+    // Auto WiFi Configuration and Agent Launch
+    // ========================================================================
+    Serial.println("=====================================");
+    Serial.println("[BOOT] Checking WiFi status...");
+    
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("[BOOT] No saved WiFi configuration found");
+        Serial.println("[BOOT] Starting automatic WiFi configuration...");
+        Serial.println("[BOOT] HID will execute PowerShell script to get WiFi credentials");
+        delay(3000); // Wait for system to stabilize
+        
+        hidManager.autoGetWindowsWiFi();
+        
+        Serial.println("[BOOT] Waiting for WiFi connection...");
+        // Wait up to 30 seconds for WiFi to connect
+        int timeout = 30;
+        while (WiFi.status() != WL_CONNECTED && timeout-- > 0) {
+            delay(1000);
+            Serial.print(".");
+        }
+        Serial.println();
+    }
+    
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial.println("[BOOT] WiFi connected successfully!");
+        String deviceIP = WiFi.localIP().toString();
+        Serial.printf("[BOOT] Device IP: %s\n", deviceIP.c_str());
+        
+        Serial.println("[BOOT] Starting agent download and execution...");
+        delay(2000); // Wait for web server to be ready
+        
+        hidManager.downloadAndRunAgent(deviceIP);
+        
+        Serial.println("[BOOT] Agent launch sequence initiated");
+        Serial.println("[BOOT] Please check PowerShell window on host");
+    } else {
+        Serial.println("[BOOT] WiFi auto-config failed or timed out");
+        Serial.println("[BOOT] Please configure WiFi manually:");
+    }
+    
+    Serial.println("=====================================");
 }
 void loop() {
     wifiManager.loop();

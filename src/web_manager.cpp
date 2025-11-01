@@ -285,6 +285,34 @@ void WebManager::setupRoutes() {
         }
     });
 
+    // Agent download endpoint
+    server.on("/api/agent/download", HTTP_GET, [](AsyncWebServerRequest *request){
+        String platform = "windows"; // Default platform
+        if (request->hasParam("platform")) {
+            platform = request->getParam("platform")->value();
+        }
+        
+        String filename = "/agent/noox-host-agent";
+        if (platform == "windows") {
+            filename += ".exe";
+        } else if (platform == "macos") {
+            filename += "-macos";
+        } else if (platform == "linux") {
+            filename += "-linux";
+        } else {
+            request->send(400, "text/plain", "Invalid platform. Use: windows, macos, or linux");
+            return;
+        }
+        
+        if (LittleFS.exists(filename)) {
+            Serial.printf("[WEB] Serving agent file: %s\n", filename.c_str());
+            request->send(LittleFS, filename, "application/octet-stream");
+        } else {
+            Serial.printf("[WEB] Agent file not found: %s\n", filename.c_str());
+            request->send(404, "text/plain", "Agent file not found. Please deploy with: python deploy_all.py");
+        }
+    });
+
     server.onNotFound([](AsyncWebServerRequest *request){
         request->send(404, "text/plain", "Not found");
     });

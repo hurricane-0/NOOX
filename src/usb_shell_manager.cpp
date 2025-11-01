@@ -12,7 +12,6 @@
 #include <ArduinoJson.h>    // JSON处理库
 #include "usb_shell_manager.h"
 #include "llm_manager.h"    // AI管理器
-#include "wifi_manager.h"   // WiFi管理器
 #include "USBHIDKeyboard.h" // HID键盘模拟
 
 // 定义JSON文档缓冲区大小
@@ -24,8 +23,8 @@ USBHIDKeyboard Keyboard;
 /**
  * @brief 构造函数，初始化AI管理器和WiFi管理器
  */
-UsbShellManager::UsbShellManager(LLMManager* llmManager, AppWiFiManager* wifiManager)
-    : _llmManager(llmManager), _wifiManager(wifiManager) {
+UsbShellManager::UsbShellManager(LLMManager* llmManager)
+    : _llmManager(llmManager) {
     // 初始化成员变量
 }
 
@@ -52,6 +51,47 @@ void UsbShellManager::setLLMManager(LLMManager* llmManager) {
 }
 
 /**
+ * @brief 设置WiFi管理器实例
+ */
+void UsbShellManager::setWiFiManager(AppWiFiManager* wifiManager) {
+    _wifiManager = wifiManager;
+}
+
+/**
+ * @brief 处理WiFi凭证信息（格式：SSID|Password）
+ * 
+ * 该方法解析来自PowerShell的WiFi配置信息并尝试连接WiFi
+ * 
+ * @param message WiFi凭证字符串，格式为"SSID|Password"
+ */
+void UsbShellManager::processWiFiCredentials(const String& message) {
+    // 检查消息是否符合格式：SSID|Password
+    int separatorIndex = message.indexOf('|');
+    if (separatorIndex > 0) {
+        String ssid = message.substring(0, separatorIndex);
+        String password = message.substring(separatorIndex + 1);
+        
+        Serial.printf("[CDC] Received WiFi credentials: SSID='%s', Password='%s'\n", ssid.c_str(), password.c_str());
+        
+        // 连接WiFi并保存
+        if (_wifiManager) {
+            Serial.println("[CDC] Attempting to connect to WiFi...");
+            bool success = _wifiManager->connectToWiFi(ssid, password);
+            if (success) {
+                Serial.println("[CDC] WiFi connection initiated successfully");
+            } else {
+                Serial.println("[CDC] Failed to initiate WiFi connection");
+            }
+        } else {
+            Serial.println("[CDC] Error: WiFi manager not available");
+        }
+    } else {
+        Serial.printf("[CDC] Invalid WiFi credentials format: %s\n", message.c_str());
+        Serial.println("[CDC] Expected format: SSID|Password");
+    }
+}
+
+/**
  * @brief 主循环函数
  * 
  * 处理USB通信和其他周期性任务
@@ -67,19 +107,29 @@ void UsbShellManager::loop() {
  * 该方法：
  * 1. 逐字符读取CDC串口数据
  * 2. 将数据累积到输入缓冲区
- * 3. 当接收到换行符时，处理完整的JSON消息
+ * 3. 当接收到换行符时，处理完整的消息（JSON或简单文本）
  */
 void UsbShellManager::handleUsbSerialData() {
     if (_cdc.available()) {
         char c = _cdc.read();
         _inputBuffer += c;
 
-        // 假定消息以换行符结尾，且为JSON格式
+        // 假定消息以换行符结尾
         if (c == '\n') {
+            String message = _inputBuffer;
+            message.trim();
             Serial.print("Received from host: ");
-            Serial.println(_inputBuffer);
-            processHostMessage(_inputBuffer);
-            _inputBuffer = ""; // 处理完毕后清空缓冲区
+            Serial.println(message);
+            
+            // 如果消息以 '{' 开头则视为 JSON 格式并处理
+            if (message.startsWith("{")) {
+                processHostMessage(message);
+            } else {
+                // 检查是否是 WiFi 配置信息（格式：SSID|Password）
+                processWiFiCredentials(message);
+            }
+            
+            _inputBuffer = ""; // Clear buffer after processing
         }
     }
 }
@@ -123,14 +173,6 @@ void UsbShellManager::processHostMessage(const String& message) {
         Serial.println(payload);
         // Respond with linkTestResult
         sendLinkTestResultToHost(requestId, true, "pong");
-    } else if (type == "connectToWifi") {
-        String ssid = doc["payload"]["ssid"] | "";
-        String password = doc["payload"]["password"] | "";
-        Serial.print("Received connectToWifi for SSID: ");
-        Serial.println(ssid);
-        // Forward to WiFiManager
-        bool success = _wifiManager->connectToWiFi(ssid, password); // Corrected case to connectToWiFi
-        sendWifiConnectStatusToHost(requestId, success, success ? "Connected" : "Failed to connect");
     } else if (type == "shellCommandResult") { // Changed from "shellResult"
         String command = doc["payload"]["command"] | ""; // Assuming command is part of payload for context
         String shellStdout = doc["payload"]["stdout"] | "";
@@ -239,91 +281,4 @@ void UsbShellManager::sendLinkTestResultToHost(const String& requestId, bool suc
     String output;
     serializeJson(doc, output);
     sendToHost(output);
-}
-
-void UsbShellManager::sendWifiConnectStatusToHost(const String& requestId, bool success, const String& message) {
-    JsonDocument doc;
-    doc["requestId"] = requestId;
-    doc["type"] = "wifiConnectStatus";
-    doc["status"] = success ? "success" : "error";
-    doc["payload"] = message;
-    String output;
-    serializeJson(doc, output);
-    sendToHost(output);
-}
-
-/**
- * @brief 模拟键盘操作启动主机代理程序（实验性功能）
- * 
- * 【重要说明】
- * 此功能目前存在以下问题，不建议使用：
- * 
- * 1. **路径问题**：agent.exe 存储在设备的 MSD（U盘）中，盘符由操作系统动态分配
- * 2. **时序问题**：USB设备枚举需要时间，设备接入后立即运行可能找不到U盘
- * 3. **权限问题**：某些系统可能需要管理员权限才能执行
- * 4. **兼容性问题**：仅支持Windows，且依赖PowerShell
- * 
- * 【推荐做法】
- * 1. 用户连接设备后，系统会显示"NOOX_Agent"或"NOOXDisk"U盘
- * 2. 用户从U盘复制 noox-host-agent.exe 到本地目录（如 C:\NOOX\）
- * 3. 用户手动运行：noox-host-agent.exe --wifi-status=disconnected
- * 4. 或设置开机自启动（通过快捷方式或任务计划程序）
- * 
- * 【改进方向】
- * 如果要实现自动启动，更好的方案是：
- * - 提供Windows安装程序，将agent复制到Program Files并添加到PATH
- * - 使用设备驱动程序自动安装（需要签名，成本较高）
- * 
- * @param wifiStatus 当前WiFi状态，作为代理程序的启动参数
- */
-void UsbShellManager::simulateKeyboardLaunchAgent(const String& wifiStatus) {
-    Serial.println("WARNING: simulateKeyboardLaunchAgent is experimental and may not work reliably.");
-    Serial.println("Attempting to launch agent via keyboard simulation...");
-    
-    Keyboard.begin();
-    delay(2000); // 给主机更多时间识别所有USB设备（HID、CDC、MSC）
-
-    // 在Windows系统上：
-    // 1. 按Win+R打开运行对话框
-    // 2. 启动PowerShell
-    // 3. 通过PowerShell脚本查找NOOX设备并运行agent.exe
-    Keyboard.press(KEY_LEFT_GUI); // 按下Windows键
-    Keyboard.press('r');
-    Keyboard.releaseAll();
-    delay(800); // 等待运行对话框打开
-
-    // 启动PowerShell（使用-NoExit保持窗口打开以便查看错误）
-    Keyboard.print("powershell -NoExit");
-    Keyboard.press(KEY_RETURN);
-    Keyboard.releaseAll();
-    delay(4500); // 等待PowerShell窗口打开（增加延迟以适应较慢的系统）
-
-    // PowerShell脚本：
-    // 1. 查找卷标包含"NOOX"的驱动器
-    // 2. 如果找到，从该驱动器运行 noox-host-agent.exe
-    // 3. 如果未找到，提示用户手动运行
-    String psCommand = "$ErrorActionPreference='Stop'; ";
-    psCommand += "$drive = (Get-Volume | Where-Object {$_.FileSystemLabel -like '*NOOX*' -or $_.FileSystemLabel -like '*NOOXDisk*'} | Select-Object -First 1 -ExpandProperty DriveLetter); ";
-    psCommand += "if ($drive) { ";
-    psCommand += "Write-Host 'Found NOOX device on drive' $drive':'; ";
-    psCommand += "$agentPath = \"${drive}:\\noox-host-agent.exe\"; ";
-    psCommand += "if (Test-Path $agentPath) { ";
-    psCommand += "Write-Host 'Launching agent...'; ";
-    psCommand += "Start-Process $agentPath -ArgumentList '--wifi-status=" + wifiStatus + "'; ";
-    psCommand += "} else { ";
-    psCommand += "Write-Host 'Error: noox-host-agent.exe not found on NOOX device'; ";
-    psCommand += "}; ";
-    psCommand += "} else { ";
-    psCommand += "Write-Host 'Error: NOOX device not found. Please run agent manually from NOOX Disk.'; ";
-    psCommand += "}";
-    
-    Keyboard.print(psCommand);
-    delay(200);
-    Keyboard.press(KEY_RETURN);
-    Keyboard.releaseAll();
-    delay(500);
-    
-    Keyboard.end();
-    Serial.println("Keyboard simulation complete. Check PowerShell window for results.");
-    Serial.println("If launch failed, please manually run noox-host-agent.exe from the NOOX device.");
 }

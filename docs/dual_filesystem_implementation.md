@@ -16,9 +16,9 @@ NOOX 设备现在使用**双文件系统**架构，解决了 USB MSC（U 盘模�
 │ NVS (20KB)          │ 系统配置                               │
 │ OTA Data (8KB)      │ OTA 元数据                            │
 │ App0 (8MB)          │ 固件程序                               │
-│ LittleFS (4MB)      │ • config.json (设备配置)               │
+│ LittleFS (2MB)      │ • config.json (设备配置)               │
 │                     │ • *.html.gz (Web 界面，嵌入式部署)     │
-│ FFat (4MB)          │ • noox-host-agent.exe (主机代理)       │
+│ FFat (6MB)          │ • noox-host-agent.exe (主机代理)       │
 │                     │ • README.txt (说明文件)                │
 └─────────────────────────────────────────────────────────────┘
          ↓                              ↓
@@ -37,8 +37,8 @@ NOOX 设备现在使用**双文件系统**架构，解决了 USB MSC（U 盘模�
 nvs,        data, nvs,     0x9000,   0x5000,
 otadata,    data, ota,     0xe000,   0x2000,
 app0,       app,  ota_0,   0x10000,  0x800000,
-littlefs,   data, spiffs,  0x810000, 0x3F0000,  # 4MB for internal use
-ffat,       data, fat,     0xC00000, 0x400000,  # 4MB for USBMSC
+littlefs,   data, spiffs,  0x810000, 0x200000,  # 2MB for internal use
+ffat,       data, fat,     0xA10000, 0x5F0000,  # 6MB for USBMSC
 ```
 
 **说明**：
