@@ -3,9 +3,9 @@
 ## 文档信息
 
 - **项目名称**: NOOX ESP32-S3 AI 智能硬件平台
-- **版本**: 3.0
-- **文档日期**: 2025-10-12
-- **文档状态**: 最终版
+- **版本**: 3.1
+- **文档日期**: 2025-11-16
+- **文档状态**: 更新版
 - **维护人**: NOOX 开发团队
 
 ---
@@ -38,7 +38,7 @@ NOOX 是一个基于 ESP32-S3 的智能硬件平台，集成了大语言模型�
 
 - **双模式 LLM 集成**：支持聊天模式和高级模式，提供不同级别的 AI 交互能力
 - **多通道交互**：Web 界面、USB Shell、OLED + 按键
-- **USB 复合设备**：同时提供 HID、CDC、MSD 功能
+- **USB 复合设备**：同时提供 HID、CDC 功能（不再使用 MSD）
 - **跨平台 Shell 交互**：通过主机代理程序实现终端级别的 AI 交互
 - **对话历史管理**：支持多轮对话上下文保持
 - **动态配置管理**：支持运行时修改 LLM 提供商、API 密钥和 WiFi 配置
@@ -241,7 +241,7 @@ build_flags =
   -DCONFIG_MBEDTLS_SSL_MAX_CONTENT_LEN=16384
   -DCORE_DEBUG_LEVEL=4                    # 详细日志
   -DARDUINOJSON_USE_PSRAM=1               # JSON 使用 PSRAM
-  -DARDUINO_USB_MSC_ON_BOOT=1             # USB MSC 启动
+  # 已移除 MSC：当前架构不使用 USB MSC（U 盘模拟）
   -DARDUINO_USB_HID_ON_BOOT=1             # USB HID 启动
 ```
 
@@ -628,17 +628,24 @@ String LLMManager::generateSystemPrompt(LLMMode mode) {
 // 高级模式会包含工具描述
 String prompt = "你是一个高级AI助手，能够调用以下工具来完成任务：\n\n";
 
-// 添加 Shell 命令工具
-prompt += "## 工具：execute_shell_command\n";
-prompt += "描述：在用户的计算机上执行 Shell 命令\n";
-prompt += "参数：{ \"command\": \"要执行的命令\" }\n";
-prompt += "使用时机：当用户要求操作文件、查看系统信息、运行程序时\n\n";
+// 添加 Shell 命令工具（新版）
+prompt += "## 工具：run_command\n";
+prompt += "描述：在主机上执行 Shell 命令，支持指定 shell 类型\n";
+prompt += "参数：{ \"command\": \"要执行的命令\", \"shell\": \"powershell|pwsh|cmd|bash|sh(可选)\" }\n";
+prompt += "使用时机：当需要在主机执行系统命令、脚本或查询信息时\n\n";
 
-// 添加 HID 控制工具
-prompt += "## 工具：control_keyboard\n";
-prompt += "描述：模拟键盘按键，输入文本或快捷键\n";
-prompt += "参数：{ \"action\": \"type|press\", \"value\": \"内容或按键组合\" }\n";
-prompt += "示例：{ \"action\": \"press\", \"value\": \"Ctrl+C\" }\n\n";
+// 添加 HID 控制工具（新版拆分）
+prompt += "## 工具：hid_keyboard_type\n";
+prompt += "描述：通过 USB HID 输入文本\n";
+prompt += "参数：{ \"text\": \"要输入的文本\" }\n\n";
+
+prompt += "## 工具：hid_keyboard_press\n";
+prompt += "描述：按下按键组合或特殊键\n";
+prompt += "参数：{ \"keys\": \"如 Ctrl+C、Alt+Tab、Enter\" }\n\n";
+
+prompt += "## 工具：hid_keyboard_macro\n";
+prompt += "描述：执行一系列键盘操作\n";
+prompt += "参数：actions 数组（type/press/delay）\n\n";
 
 return prompt;
 ```
@@ -996,72 +1003,54 @@ public:
 | `/` | GET | 主页面 | `index.html` |
 | `/style.css` | GET | 样式表 | `style.css` |
 | `/script.js` | GET | JavaScript | `script.js` |
+| `/api/config` | GET | 获取当前配置 | JSON |
+| `/api/config` | POST | 更新配置 | JSON 状态 |
+| `/api/wifi/connect` | POST | 连接 WiFi（表单：ssid, password） | JSON 状态 |
+| `/api/wifi/disconnect` | POST | 断开 WiFi | JSON 状态 |
+| `/api/wifi/delete` | POST | 删除保存的 WiFi（表单：ssid） | JSON 状态 |
+| `/api/agent/download` | GET | 下载主机代理（参数：platform=windows|macos|linux） | 二进制 |
 | `/ws` | WebSocket | 双向通信 | - |
 
 **文件压缩**: 所有静态文件使用 gzip 压缩 (`.gz`)
 
 #### 5.7.4 WebSocket 消息协议
 
-**客户端 → 服务器**:
+客户端 → 服务器：
 
-```json
-// 发送聊天消息
-{
-  "type": "chat_message",
-  "text": "你好，帮我列出当前目录的文件"
-}
-
-// 更新配置
-{
-  "type": "update_config",
-  "config": { /* 完整的 config.json 内容 */ }
-}
-
-// 清除对话历史
-{
-  "type": "clear_history"
-}
-
-// 控制 GPIO
-{
-  "type": "gpio_control",
-  "gpio": "led1",
-  "state": true
-}
+- 发送聊天消息
+```
+{ "type": "chat_message", "payload": "你好，帮我列出当前目录的文件" }
+```
+- 设置 LLM 模式
+```
+{ "type": "set_llm_mode", "mode": "chat" } // 或 "advanced"
+```
+- 清除对话历史
+```
+{ "type": "clear_history" }
+```
+- 控制 GPIO（示例：扩展 GPIO1/2）
+```
+{ "type": "gpio_control", "gpio": "1", "state": true }
 ```
 
-**服务器 → 客户端**:
+服务器 → 客户端：
 
-```json
-// LLM 文本响应
-{
-  "type": "chat_message",
-  "sender": "bot",
-  "text": "当前目录的文件列表：..."
-}
-
-// 工具调用通知
-{
-  "type": "tool_call",
-  "tool_name": "execute_shell_command",
-  "tool_args": {
-    "command": "ls -la"
-  }
-}
-
-// 配置更新状态
-{
-  "type": "config_update_status",
-  "status": "success",
-  "message": "Configuration saved."
-}
-
-// 对话历史已清除
-{
-  "type": "history_cleared",
-  "status": "success",
-  "message": "对话历史已清除"
-}
+- LLM 文本响应
+```
+{ "type": "chat_message", "sender": "bot", "text": "当前目录的文件列表：..." }
+```
+- 工具调用通知
+```
+{ "type": "tool_call", "tool_name": "run_command", "tool_args": { "command": "ls -la" } }
+```
+- 配置更新状态（通过 REST /api/config 触发）
+```
+{ "type": "config_update_status", "status": "success", "message": "Configuration saved and applied." }
+```
+- 对话历史已清除
+```
+{ "type": "history_cleared", "status": "success", "message": "对话历史已清除" }
 ```
 
 #### 5.7.5 配置更新流程
@@ -1107,20 +1096,18 @@ WebSocket 事件回调在网络线程中执行，直接调用 `saveConfig()` 可
 ```cpp
 class UsbShellManager {
 public:
-    UsbShellManager(LLMManager* llm, AppWiFiManager* wifi);
+    UsbShellManager(LLMManager* llm);
     
     void begin();                                     // 初始化 USB CDC
     void loop();                                      // 处理串口数据
     void setLLMManager(LLMManager* llm);             // 设置 LLM 引用
+    void setWiFiManager(AppWiFiManager* wifi);       // 注入 WiFi 管理器
     
     // 发送消息到主机
-    void sendShellCommandToHost(const String& requestId, const String& cmd);
+    void sendShellCommandToHost(const String& requestId, const String& cmd); // 兼容旧版
+    void sendRunCommandToHost(const String& requestId, const String& cmd, const String& shell = "");
     void sendAiResponseToHost(const String& requestId, const String& response);
     void sendLinkTestResultToHost(const String& requestId, bool success, const String& payload);
-    void sendWifiConnectStatusToHost(const String& requestId, bool success, const String& message);
-    
-    // 模拟键盘启动代理
-    void simulateKeyboardLaunchAgent(const String& wifiStatus);
 };
 ```
 
@@ -1145,7 +1132,7 @@ processHostMessage(buffer)
     │
     ├─ "linkTest" → 发送 linkTestResult 回复
     │
-    ├─ "connectToWifi" → 调用 WiFiManager::connectToWiFi()
+    ├─ （WiFi 配置）普通文本一行，格式："SSID|Password" → 解析后调用 WiFiManager::connectToWiFi()
     │
     └─ "shellCommandResult" → 转发给 LLMManager::processShellOutput()
 ```
@@ -1160,28 +1147,24 @@ processHostMessage(buffer)
 - 接收 Shell 命令请求，在主机执行，回传结果
 - 显示 AI 响应
 
-**启动流程**:
+**启动流程（当前架构）**:
 
 ```
 1. ESP32 启动
     ↓
-2. 检测 WiFi 状态
+2. 检测 WiFi 状态（建议先通过 Web 界面连接 WiFi）
     ↓
-3. 通过 HID 模拟键盘，运行 MSD U 盘中的代理程序
+3. 通过 HID 模拟键盘在主机打开 PowerShell（Win+R → powershell）
     ↓
-    传参：agent.exe --wifi-status=disconnected
+4. 使用 Invoke-WebRequest 从设备 Web 服务器下载主机代理：
+       Invoke-WebRequest -Uri "http://<设备IP>/api/agent/download?platform=windows" -OutFile $env:TEMP\noox-agent.exe
     ↓
-4. 代理程序启动
+5. 运行代理程序：
+       & $env:TEMP\noox-agent.exe
     ↓
-5. 发送 linkTest 到 ESP32
+6. 代理程序启动后发送 linkTest 到 ESP32，ESP32 回复 linkTestResult
     ↓
-6. ESP32 回复 linkTestResult
-    ↓
-7. 如果 wifiStatus == "disconnected"
-    ↓
-    代理获取主机 WiFi → 发送 connectToWifi → ESP32 连接
-    ↓
-8. 等待用户输入
+7. 进入交互：用户输入 → ESP32 → LLM 决策 → 工具调用（runCommand等） → 结果返回
 ```
 
 ---
@@ -1226,14 +1209,15 @@ processHostMessage(buffer)
 |------|------|------|
 | `userInput` | `requestId`, `payload` | 用户输入 |
 | `linkTest` | `requestId`, `payload` | 通信测试 |
-| `connectToWifi` | `requestId`, `payload:{ssid, password}` | WiFi 连接请求 |
+（说明）WiFi 凭证通过普通文本一行发送（非 JSON），格式："SSID|Password"，由设备解析并调用 WiFiManager 连接。
 | `shellCommandResult` | `requestId`, `payload:{command, stdout, stderr}, status, exitCode` | Shell 执行结果 |
 
 #### 6.2.3 ESP32 到主机
 
 | 类型 | 字段 | 说明 |
 |------|------|------|
-| `shellCommand` | `requestId`, `payload` | 请求执行 Shell 命令 |
+| `shellCommand` | `requestId`, `payload` | 请求执行 Shell 命令（旧版兼容） |
+| `runCommand` | `requestId`, `payload:{command, shell?}` | 请求在主机执行命令（支持指定 shell 类型） |
 | `aiResponse` | `requestId`, `payload` | AI 响应 |
 | `linkTestResult` | `requestId`, `status`, `payload` | 测试结果 |
 | `wifiConnectStatus` | `requestId`, `status`, `payload` | WiFi 连接结果 |
@@ -1909,15 +1893,14 @@ webManager.setLLMMode(ADVANCED_MODE);
 
 ```cpp
 // 初始化
-UsbShellManager usbShellManager(llmManager, wifiManager);
+UsbShellManager usbShellManager(llmManager);
 usbShellManager.begin();
+usbShellManager.setWiFiManager(&wifiManager); // 注入 WiFi 管理器（用于解析 SSID|Password 文本）
 
 // 发送消息到主机
-usbShellManager.sendShellCommandToHost("req-123", "ls -la");
+usbShellManager.sendShellCommandToHost("req-123", "ls -la"); // 旧版兼容
+usbShellManager.sendRunCommandToHost("req-125", "ipconfig", "cmd");
 usbShellManager.sendAiResponseToHost("req-124", "当前目录的文件列表：...");
-
-// 模拟键盘启动代理
-usbShellManager.simulateKeyboardLaunchAgent("disconnected");
 ```
 
 ---
@@ -1978,7 +1961,7 @@ usbShellManager.simulateKeyboardLaunchAgent("disconnected");
 | PSRAM | Pseudo Static RAM | 伪静态随机存取存储器 |
 | CDC | Communication Device Class | USB 通信设备类（虚拟串口） |
 | HID | Human Interface Device | USB 人机接口设备 |
-| MSD | Mass Storage Device | USB 大容量存储设备 |
+| MSD | Mass Storage Device | USB 大容量存储设备（当前架构已弃用） |
 | OLED | Organic Light-Emitting Diode | 有机发光二极管显示器 |
 | GPIO | General Purpose Input/Output | 通用输入输出 |
 | I2C | Inter-Integrated Circuit | 集成电路间总线 |

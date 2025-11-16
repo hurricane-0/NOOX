@@ -73,8 +73,8 @@ ESP32 与主机代理程序之间通过 `CDC` 虚拟串口进行通信，采用�
         "command": "Get-Process",
         "stdout": "Process output here...",
         "stderr": "",
-      "status": "success",
-      "exitCode": 0
+        "status": "success",
+        "exitCode": 0
       }
     }
     ```
