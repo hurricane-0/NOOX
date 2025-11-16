@@ -114,8 +114,8 @@ void UsbShellManager::loop() {
  * 3. 当接收到换行符时，处理完整的消息（JSON或简单文本）
  */
 void UsbShellManager::handleUsbSerialData() {
-    // 一次读取多个字符，减少CDC缓冲区溢出风险
-    const size_t maxReadPerCall = 256; // 每次最多读取256字节
+    // 一次读取更多字符，减少CDC缓冲区溢出风险
+    const size_t maxReadPerCall = 512; // 增加到512字节，更快清空CDC缓冲区
     size_t bytesRead = 0;
     
     while (_cdc.available() && bytesRead < maxReadPerCall) {

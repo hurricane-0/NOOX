@@ -642,7 +642,7 @@ void LLMManager::handleLLMRawResponse(const String& requestId, const String& pro
         // 没有JSON部分，标记为解析失败
         error = DeserializationError::InvalidInput;
     }
-    
+
     if (error) {
         // JSON解析失败，视为自然语言响应
         Serial.printf("handleLLMRawResponse: Natural language response (parse error: %s)\n", error.c_str());
@@ -872,8 +872,8 @@ void LLMManager::handleLLMRawResponse(const String& requestId, const String& pro
             if (textExplanation.isEmpty()) {
                 // 没有text也没有tool_calls，视为自然语言响应
                 Serial.println("handleLLMRawResponse: No tool_calls and no text, treating as natural language.");
-                _usbShellManager->sendAiResponseToHost(requestId, llmContentString);
-                allocateResponseString(response.naturalLanguageResponse, llmContentString);
+            _usbShellManager->sendAiResponseToHost(requestId, llmContentString);
+            allocateResponseString(response.naturalLanguageResponse, llmContentString);
             } else {
                 // 只有text，已经发送过了，不需要再处理
                 Serial.println("handleLLMRawResponse: Only text field found, already sent.");

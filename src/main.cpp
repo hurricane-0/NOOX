@@ -44,7 +44,7 @@ void uiTask(void* pvParameters) {
 void usbTask(void* pvParameters) {
     for (;;) {
         usbShellManagerPtr->loop();
-        vTaskDelay(pdMS_TO_TICKS(10)); // Small delay to yield
+        vTaskDelay(pdMS_TO_TICKS(3)); // 减少延迟，更频繁地读取CDC数据，减少溢出
     }
 }
 

@@ -411,17 +411,17 @@ func executeLocalShellCommandWithShell(command string, shell string, requestId s
 		fmt.Printf("[NOOX Shell] Command failed with exit code: %d\n", exitCode)
 	}
 
-	// 限制输出大小，防止CDC缓冲区溢出（限制为50KB）
-	const maxOutputSize = 50 * 1024
+	// 限制输出大小，防止CDC缓冲区溢出（限制为20KB，更保守）
+	const maxOutputSize = 20 * 1024
 	stdoutStr := stdout.String()
 	stderrStr := stderr.String()
 	
 	if len(stdoutStr) > maxOutputSize {
-		stdoutStr = stdoutStr[:maxOutputSize] + "\n... (output truncated, too large)"
+		stdoutStr = stdoutStr[:maxOutputSize] + "\n\n... (output truncated, too large - " + fmt.Sprintf("%d bytes", stdout.Len()) + " total)"
 		log.Printf("Warning: stdout truncated from %d to %d bytes", stdout.Len(), maxOutputSize)
 	}
 	if len(stderrStr) > maxOutputSize {
-		stderrStr = stderrStr[:maxOutputSize] + "\n... (output truncated, too large)"
+		stderrStr = stderrStr[:maxOutputSize] + "\n\n... (output truncated, too large - " + fmt.Sprintf("%d bytes", stderr.Len()) + " total)"
 		log.Printf("Warning: stderr truncated from %d to %d bytes", stderr.Len(), maxOutputSize)
 	}
 

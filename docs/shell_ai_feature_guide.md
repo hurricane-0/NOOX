@@ -68,19 +68,33 @@ ESP32 与主机代理程序之间通过 `CDC` 虚拟串口进行通信，采用�
     {
       "requestId": "uuid-shell-1",
       "type": "shellCommandResult",
-      "status": "success",
-      "payload": "file1.txt\nfile2.txt",
-      "stderr": "",
-      "exitCode": 0
+      "payload": {
+        "command": "Get-Process",
+        "stdout": "Process output here...",
+        "stderr": "",
+        "status": "success",
+        "exitCode": 0
+      }
     }
     ```
 
-*   **ESP32 -> 主机 (请求执行 Shell 命令):**
+*   **ESP32 -> 主机 (请求执行 Shell 命令 - 旧版兼容):**
     ```json
     {
       "requestId": "uuid-shell-1",
       "type": "shellCommand",
       "payload": "ls -l"
+    }
+    ```
+*   **ESP32 -> 主机 (请求执行 Shell 命令 - 新版，支持指定shell类型):**
+    ```json
+    {
+      "requestId": "uuid-shell-1",
+      "type": "runCommand",
+      "payload": {
+        "command": "Get-Process",
+        "shell": "powershell"
+      }
     }
     ```
 *   **ESP32 -> 主机 (发送 AI 回复):**
@@ -117,9 +131,14 @@ ESP32 固件中的 **`UsbShellManager`** 是整个交互流程的核心路由组
 1.  **接收输入:** `UsbShellManager` 通过 `CDC` 串口接收来自主机的所有数据，包括用户的初始请求和 Shell 命令的执行结果。
 2.  **AI 处理与决策:**
     *   所有接收到的信息（`userInput` 和 `shellCommandResult`）被统一传递给 **`llmManager`** 进行智能处理。
-    *   `llmManager` 会根据用户的提示和完整的上下文，决策并调用内部的 `sendtoshell` 工具。
-    *   `sendtoshell` 工具的参数将明确指示是需要主机执行的 **Shell 命令** (`type: "command"`)，还是 **AI 的自然语言回复** (`type: "text"`)。
-3.  **统一输出:** `UsbShellManager` 根据 `llmManager` 对 `sendtoshell` 工具的调用结果，将其封装为 `shellCommand` 或 `aiResponse` JSON 消息，通过 `CDC` 串口统一发送回主机代理程序，最终由代理程序在终端上显示给用户。
+    *   `llmManager` 会根据用户的提示和完整的上下文，决策并调用相应的工具。
+    *   主要工具包括：
+        - **`run_command`**: 在主机上执行 Shell 命令，支持指定 shell 类型（powershell、pwsh、cmd、bash、sh 等）
+        - **`hid_keyboard_type`**: 通过 USB HID 模拟键盘输入
+        - **`hid_keyboard_press`**: 模拟按键组合
+        - **`hid_keyboard_macro`**: 执行键盘操作序列
+        - **`gpio_set`**: 控制 ESP32-S3 的 GPIO 引脚
+3.  **统一输出:** `UsbShellManager` 根据 `llmManager` 的工具调用结果，将其封装为相应的 JSON 消息（如 `runCommand`、`aiResponse` 等），通过 `CDC` 串口统一发送回主机代理程序，最终由代理程序在终端上显示给用户。
 
 ## 3. 开发指南 (Development Guide)
 
@@ -150,12 +169,144 @@ ESP32 固件中的 **`UsbShellManager`** 是整个交互流程的核心路由组
     *   实现一个循环来监听终端的标准输入 (stdin) 并转发给 ESP32。
     *   同时，异步监听来自 ESP32 的数据，并将其打印到终端的标准输出 (stdout)。
 
-### 3.3 用户工作流程
+### 3.3 LLM 响应格式
+
+LLM 可以以三种方式响应：
+
+1. **纯 JSON 格式（工具调用）:**
+   ```json
+   {
+     "tool_calls": [
+       {
+         "name": "run_command",
+         "args": {
+           "command": "Get-Process",
+           "shell": "powershell"
+         }
+       }
+     ],
+     "text": "正在检查运行中的进程..."
+   }
+   ```
+
+2. **文本 + JSON 混合格式:**
+   ```
+   让我帮您检查系统进程：
+   {"tool_calls": [{"name": "run_command", "args": {"command": "Get-Process", "shell": "powershell"}}]}
+   ```
+
+3. **纯文本格式:**
+   ```
+   我可以帮您执行系统命令、管理文件、控制硬件等。您需要什么帮助？
+   ```
+
+**重要提示:**
+- JSON 响应必须是原始 JSON，不能使用 markdown 代码块包装（不能使用 ```json 或 ```）
+- `text` 字段用于在工具执行时提供说明信息
+- 可以在 JSON 前添加自然语言文本，系统会自动识别并分别处理
+
+### 3.4 可用工具说明
+
+#### run_command
+在主机上执行 Shell 命令并获取结果。
+
+**参数:**
+- `command` (必需): 要执行的命令字符串
+- `shell` (可选): Shell 类型，支持 "powershell"、"pwsh"、"cmd"、"bash"、"sh" 等。如果不指定，系统会根据平台自动选择。
+
+**示例:**
+```json
+{
+  "tool_calls": [
+    {
+      "name": "run_command",
+      "args": {
+        "command": "Get-Process | Select-Object Name, CPU",
+        "shell": "powershell"
+      }
+    }
+  ]
+}
+```
+
+#### hid_keyboard_type
+通过 USB HID 模拟键盘输入文本。
+
+**参数:**
+- `text` (必需): 要输入的文本
+
+#### hid_keyboard_press
+模拟按键组合或特殊键。
+
+**参数:**
+- `keys` (必需): 按键组合，如 "Ctrl+C"、"Alt+Tab"、"Enter" 等
+
+#### hid_keyboard_macro
+执行一系列键盘操作。
+
+**参数:**
+- `actions` (必需): 操作数组，每个操作可以是：
+  - `{"action": "type", "value": "text"}` - 输入文本
+  - `{"action": "press", "key": "Ctrl+C"}` - 按键
+  - `{"action": "delay", "ms": 500}` - 延迟
+
+#### gpio_set
+控制 ESP32-S3 的 GPIO 引脚。
+
+**参数:**
+- `gpio` (必需): GPIO 名称，如 "led1"、"led2"、"led3"、"gpio1"、"gpio2"
+- `state` (必需): true (HIGH) 或 false (LOW)
+
+### 3.5 用户工作流程
 
 1.  **连接设备:** 用户通过 USB 线将 NOOX 设备连接到计算机。
 2.  **自动识别:** 计算机自动识别出三个设备：一个标准的键盘/鼠标，一个虚拟串口，以及一个 U 盘。
-3.  **启动代理:** ESP32 通过 `HID` 模拟键盘操作，在主机上自动运行 MSD 模拟的 U 盘内的 Go 代理程序 (例如 `agent.exe` 或 `agent-macos`)，并传入当前 WiFi 状态参数。
+3.  **启动代理:** ESP32 通过 `HID` 模拟键盘操作，在主机上自动运行 MSD 模拟的 U 盘内的 Go 代理程序 (例如 `noox-host-agent.exe`)，并传入当前 WiFi 状态参数。
 4.  **WiFi 状态处理与通信测试:**
     *   Go 代理程序启动后，首先发送 `linktest` 消息测试与设备的双向通信。
     *   如果 ESP32 初始 WiFi 未连接，Go 代理程序会尝试获取主机当前连接的 WiFi 信息，并通过 `connectToWifi` 消息回传给设备进行连接。
 5.  **开始交互:** 代理程序完成初始化后，用户即可在当前终端窗口中输入自然语言与 AI 对话。所有交互（包括 Shell 命令的执行和 AI 的回复）都会在这个窗口中无缝进行。
+6.  **命令执行:** 
+    *   LLM 通过 `run_command` 工具执行命令
+    *   主机代理程序执行命令并在终端显示输出
+    *   命令结果自动返回给 LLM 进行分析
+    *   LLM 可以根据结果继续执行后续操作或提供分析
+
+## 4. 性能优化与限制 (Performance & Limitations)
+
+### 4.1 输出大小限制
+
+为了防止 CDC 缓冲区溢出，系统对命令输出进行了限制：
+
+- **最大输出大小**: 20KB（stdout 和 stderr 分别限制）
+- **超出限制处理**: 输出会被截断，并显示原始大小信息
+- **建议**: 对于可能产生大量输出的命令，建议使用管道或筛选来减少输出量
+
+**示例:**
+```powershell
+# 推荐：限制输出数量
+Get-Process | Select-Object -First 20
+
+# 不推荐：可能产生大量输出
+Get-Process | Format-List *
+```
+
+### 4.2 CDC 通信优化
+
+- **读取频率**: USB 任务每 3ms 执行一次，确保及时读取 CDC 数据
+- **批量读取**: 每次最多读取 512 字节，快速清空 CDC 硬件缓冲区
+- **缓冲区管理**: 输入缓冲区限制为 64KB，防止内存溢出
+
+### 4.3 最佳实践
+
+1. **命令选择**: 优先使用能产生简洁输出的命令
+2. **Shell 类型**: 明确指定 shell 类型（如 powershell、cmd）以获得最佳兼容性
+3. **输出格式**: 使用表格或列表格式，避免冗长的详细输出
+4. **分步执行**: 对于复杂任务，分多个步骤执行，而不是一次性执行复杂命令
+
+### 4.4 已知限制
+
+- 命令输出超过 20KB 会被截断
+- CDC 缓冲区溢出可能导致数据丢失（已通过优化减少发生）
+- 不支持交互式命令（需要用户输入的命令）
+- 命令执行超时由主机系统决定
