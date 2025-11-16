@@ -10,6 +10,22 @@
 const size_t JSON_DOC_SIZE = 262144; // 为可能更大的LLM响应增加了大小，并利用PSRAM
 const size_t MAX_RESPONSE_LENGTH = JSON_DOC_SIZE; // Maximum expected response length
 
+// 串口输出截断长度（只输出前N个字符，减少串口输出）
+const size_t SERIAL_OUTPUT_TRUNCATE_LENGTH = 80;
+
+/**
+ * @brief 截断字符串用于串口输出（只输出前N个字符）
+ * @param str 原始字符串
+ * @param maxLen 最大长度
+ * @return 截断后的字符串（如果超过长度会添加"..."）
+ */
+inline String truncateForSerial(const String& str, size_t maxLen = SERIAL_OUTPUT_TRUNCATE_LENGTH) {
+    if (str.length() <= maxLen) {
+        return str;
+    }
+    return str.substring(0, maxLen) + "...";
+}
+
 // ==================== ConversationHistory 类实现 ====================
 
 // 构造函数
@@ -423,14 +439,18 @@ String LLMManager::getOpenAILikeResponse(const String& requestId, const String& 
                 return "Error: No data received from server";
             }
             
-            // 输出前100个字符用于调试
+            // 输出前60个字符用于调试
             Serial.print("[LLM] Response preview: ");
-            for (int i = 0; i < min((int)totalBytesRead, 100); i++) {
+            int previewLen = min((int)totalBytesRead, (int)SERIAL_OUTPUT_TRUNCATE_LENGTH);
+            for (int i = 0; i < previewLen; i++) {
                 if (buffer[i] >= 32 && buffer[i] < 127) {
                     Serial.print((char)buffer[i]);
                 } else {
                     Serial.print('.');
                 }
+            }
+            if (totalBytesRead > SERIAL_OUTPUT_TRUNCATE_LENGTH) {
+                Serial.print("...");
             }
             Serial.println();
             
@@ -652,14 +672,14 @@ void LLMManager::handleLLMRawResponse(const String& requestId, const String& pro
         // 成功解析JSON
         // 如果JSON前面有文本，先发送前面的文本
         if (!textBeforeJson.isEmpty()) {
-            Serial.printf("handleLLMRawResponse: Found text before JSON: %s\n", textBeforeJson.c_str());
+            Serial.printf("handleLLMRawResponse: Found text before JSON: %s\n", truncateForSerial(textBeforeJson).c_str());
             _usbShellManager->sendAiResponseToHost(requestId, textBeforeJson);
         }
         
         // 检查JSON中是否有text字段
         textExplanation = contentDoc["text"] | "";
         if (!textExplanation.isEmpty()) {
-            Serial.printf("handleLLMRawResponse: Found text in JSON: %s\n", textExplanation.c_str());
+            Serial.printf("handleLLMRawResponse: Found text in JSON: %s\n", truncateForSerial(textExplanation).c_str());
             // 发送JSON中的文本说明
             _usbShellManager->sendAiResponseToHost(requestId, textExplanation);
         }
@@ -706,7 +726,7 @@ void LLMManager::handleLLMRawResponse(const String& requestId, const String& pro
                     serializeJson(argsDoc, argsStr);
                     allocateResponseString(response.toolArgs, argsStr);
 
-                    Serial.printf("LLM requested run_command: %s (shell: %s)\n", command.c_str(), shell.isEmpty() ? "auto" : shell.c_str());
+                    Serial.printf("LLM requested run_command: %s (shell: %s)\n", truncateForSerial(command, 40).c_str(), shell.isEmpty() ? "auto" : shell.c_str());
                     _usbShellManager->sendRunCommandToHost(requestId, command, shell);
                 }
             } else if (toolName == "hid_keyboard_type") {
@@ -903,7 +923,8 @@ void LLMManager::loop() {
 
     // 检查队列中是否有请求，非阻塞
     if (xQueueReceive(llmRequestQueue, &request, 0) == pdPASS) {
-    Serial.printf("LLMTask: Received request for prompt: %s (requestId: %s)\n", request.prompt ? request.prompt : "NULL", request.requestId);
+        String promptPreview = request.prompt ? truncateForSerial(String(request.prompt)) : "NULL";
+        Serial.printf("LLMTask: Received request for prompt: %s (requestId: %s)\n", promptPreview.c_str(), request.requestId);
         
         if (request.prompt) {
             // 将char*转换为String用于generateResponse函数
@@ -912,7 +933,7 @@ void LLMManager::loop() {
             
             // 调用核心函数生成响应
             String llmContent = generateResponse(requestIdStr, promptStr, request.mode);
-            Serial.printf("LLMTask: Generated content: %s\n", llmContent.c_str());
+            Serial.printf("LLMTask: Generated content: %s\n", truncateForSerial(llmContent).c_str());
 
             // 处理LLM的原始响应，解析工具调用或自然语言回复（传递prompt用于保存历史）
             handleLLMRawResponse(requestIdStr, promptStr, llmContent);

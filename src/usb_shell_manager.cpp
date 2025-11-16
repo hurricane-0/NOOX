@@ -20,8 +20,24 @@ const size_t JSON_DOC_SIZE = 65536;
 // 定义输入缓冲区最大大小（64KB，防止内存溢出）
 const size_t MAX_INPUT_BUFFER_SIZE = 65536; 
 
+// 串口输出截断长度（只输出前N个字符，减少串口输出）
+const size_t SERIAL_OUTPUT_TRUNCATE_LENGTH = 80;
+
 // 创建HID键盘实例
 USBHIDKeyboard Keyboard;
+
+/**
+ * @brief 截断字符串用于串口输出（只输出前N个字符）
+ * @param str 原始字符串
+ * @param maxLen 最大长度
+ * @return 截断后的字符串（如果超过长度会添加"..."）
+ */
+inline String truncateForSerial(const String& str, size_t maxLen = SERIAL_OUTPUT_TRUNCATE_LENGTH) {
+    if (str.length() <= maxLen) {
+        return str;
+    }
+    return str.substring(0, maxLen) + "...";
+}
 
 /**
  * @brief 构造函数，初始化AI管理器和WiFi管理器
@@ -193,7 +209,7 @@ void UsbShellManager::processHostMessage(const String& message) {
     if (type == "userInput") {
         String payload = doc["payload"] | "";
         Serial.print("User input: ");
-        Serial.println(payload);
+        Serial.println(truncateForSerial(payload));
         // Forward to LLMManager with requestId
         _llmManager->processUserInput(requestId, payload);
     } else if (type == "linkTest") {
@@ -212,9 +228,9 @@ void UsbShellManager::processHostMessage(const String& message) {
         Serial.print("Shell output for '");
         Serial.print(command);
         Serial.print("':\nSTDOUT: ");
-        Serial.println(shellStdout);
+        Serial.println(truncateForSerial(shellStdout));
         Serial.print("STDERR: ");
-        Serial.println(shellStderr);
+        Serial.println(truncateForSerial(shellStderr));
         Serial.print("Status: ");
         Serial.println(status);
         Serial.print("Exit Code: ");
@@ -237,7 +253,7 @@ void UsbShellManager::processHostMessage(const String& message) {
 void UsbShellManager::sendToHost(const String& message) {
     _cdc.println(message);        // 通过CDC串口发送消息
     Serial.print("Sent to host: ");
-    Serial.println(message);      // 同时在调试串口输出
+    Serial.println(truncateForSerial(message));      // 同时在调试串口输出
 }
 
 /**
