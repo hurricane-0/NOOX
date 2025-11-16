@@ -57,6 +57,13 @@ type ShellOutputPayload struct {
 	ExitCode int    `json:"exitCode,omitempty"` // 命令退出码
 }
 
+// runCommand请求的负载结构体
+// 包含要执行的命令和可选的shell类型
+type RunCommandPayload struct {
+	Command string `json:"command"` // 要执行的命令
+	Shell   string `json:"shell,omitempty"` // Shell类型（如powershell, pwsh, cmd, bash等）
+}
+
 // 主机发送给 ESP32 的通用消息结构体
 // 使用 interface{} 作为 Payload 以支持不同类型的负载
 type HostMessage struct {
@@ -229,7 +236,7 @@ func readFromESP32() {
 func handleESP32Response(resp ESP32Response) {
 	switch resp.Type {
 	case "shellCommand":
-		// 处理Shell命令请求
+		// 处理Shell命令请求（旧版兼容）
 		// Payload应该是一个需要在本地执行的命令字符串
 		command, ok := resp.Payload.(string)
 		if !ok {
@@ -238,6 +245,30 @@ func handleESP32Response(resp ESP32Response) {
 		}
 		fmt.Printf("[NOOX Shell] Executing: %s\n", command)
 		executeLocalShellCommand(command)
+	case "runCommand":
+		// 处理runCommand请求（支持指定shell类型）
+		// Payload是一个包含command和可选shell字段的对象
+		payloadBytes, err := json.Marshal(resp.Payload)
+		if err != nil {
+			log.Printf("Error marshalling runCommand payload: %v", err)
+			return
+		}
+		var runCmdPayload RunCommandPayload
+		err = json.Unmarshal(payloadBytes, &runCmdPayload)
+		if err != nil {
+			log.Printf("Error unmarshalling runCommand payload: %v", err)
+			return
+		}
+		if runCmdPayload.Command == "" {
+			log.Printf("Error: runCommand payload missing command field")
+			return
+		}
+		shellInfo := "auto"
+		if runCmdPayload.Shell != "" {
+			shellInfo = runCmdPayload.Shell
+		}
+		fmt.Printf("[NOOX Shell] Executing: %s (shell: %s)\n", runCmdPayload.Command, shellInfo)
+		executeLocalShellCommandWithShell(runCmdPayload.Command, runCmdPayload.Shell, resp.RequestId)
 	case "aiResponse":
 		// 处理AI回复消息
 		// Payload应该是AI生成的回复文本
@@ -302,18 +333,52 @@ func readFromStdin() {
 	}
 }
 
-// 在本地执行Shell命令
+// 在本地执行Shell命令（使用默认shell，向后兼容）
 // 根据操作系统类型选择合适的Shell，执行命令并收集输出结果
 func executeLocalShellCommand(command string) {
+	executeLocalShellCommandWithShell(command, "", generateUUID())
+}
+
+// 在本地执行Shell命令（支持指定shell类型）
+// 根据指定的shell类型或操作系统类型选择合适的Shell，执行命令并收集输出结果
+func executeLocalShellCommandWithShell(command string, shell string, requestId string) {
 	var cmd *exec.Cmd
 
-	// 根据操作系统选择合适的Shell
-	if os.Getenv("OS") == "Windows_NT" {
-		// Windows系统使用cmd.exe
-		cmd = exec.Command("cmd", "/C", command)
-	} else {
-		// Unix类系统使用bash
-		cmd = exec.Command("bash", "-c", command)
+	// 如果指定了shell类型，使用指定的shell
+	if shell != "" {
+		shellLower := strings.ToLower(shell)
+		switch shellLower {
+		case "pwsh":
+			// PowerShell Core (跨平台)
+			cmd = exec.Command("pwsh", "-Command", command)
+		case "powershell":
+			// Windows PowerShell
+			cmd = exec.Command("powershell", "-Command", command)
+		case "cmd":
+			// CMD (Windows)
+			cmd = exec.Command("cmd", "/C", command)
+		case "bash":
+			// Bash (Unix/Linux/Mac)
+			cmd = exec.Command("bash", "-c", command)
+		case "sh":
+			// Sh (Unix/Linux)
+			cmd = exec.Command("sh", "-c", command)
+		default:
+			// 未知的shell类型，回退到自动检测
+			log.Printf("Warning: Unknown shell type '%s', falling back to auto-detection", shell)
+			shell = ""
+		}
+	}
+
+	// 如果没有指定shell或指定失败，根据操作系统自动选择
+	if cmd == nil {
+		if os.Getenv("OS") == "Windows_NT" {
+			// Windows系统默认使用cmd.exe
+			cmd = exec.Command("cmd", "/C", command)
+		} else {
+			// Unix类系统默认使用bash
+			cmd = exec.Command("bash", "-c", command)
+		}
 	}
 
 	// 创建用于捕获命令输出的缓冲区
@@ -335,16 +400,41 @@ func executeLocalShellCommand(command string) {
 		log.Printf("Error executing command '%s': %v", command, err)
 	}
 
+	// 在终端显示命令输出，方便用户查看
+	if stdout.Len() > 0 {
+		fmt.Printf("[NOOX Shell Output]\n%s\n", stdout.String())
+	}
+	if stderr.Len() > 0 {
+		fmt.Printf("[NOOX Shell Error]\n%s\n", stderr.String())
+	}
+	if status == "error" {
+		fmt.Printf("[NOOX Shell] Command failed with exit code: %d\n", exitCode)
+	}
+
+	// 限制输出大小，防止CDC缓冲区溢出（限制为50KB）
+	const maxOutputSize = 50 * 1024
+	stdoutStr := stdout.String()
+	stderrStr := stderr.String()
+	
+	if len(stdoutStr) > maxOutputSize {
+		stdoutStr = stdoutStr[:maxOutputSize] + "\n... (output truncated, too large)"
+		log.Printf("Warning: stdout truncated from %d to %d bytes", stdout.Len(), maxOutputSize)
+	}
+	if len(stderrStr) > maxOutputSize {
+		stderrStr = stderrStr[:maxOutputSize] + "\n... (output truncated, too large)"
+		log.Printf("Warning: stderr truncated from %d to %d bytes", stderr.Len(), maxOutputSize)
+	}
+
 	shellPayload := ShellOutputPayload{
 		Command:  command,
-		Stdout:   stdout.String(),
-		Stderr:   stderr.String(),
+		Stdout:   stdoutStr,
+		Stderr:   stderrStr,
 		Status:   status,
 		ExitCode: exitCode,
 	}
 
 	hostMsg := HostMessage{
-		RequestId: generateUUID(),
+		RequestId: requestId,
 		Type:      "shellCommandResult",
 		Payload:   shellPayload,
 	}

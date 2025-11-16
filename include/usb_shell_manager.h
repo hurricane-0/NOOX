@@ -55,11 +55,19 @@ public:
 
     // 向主机发送消息的方法
     /**
-     * @brief 向主机发送Shell命令
+     * @brief 向主机发送Shell命令（已废弃，使用sendRunCommandToHost替代）
      * @param requestId 请求ID，用于追踪请求-响应对
      * @param command 要执行的Shell命令
      */
     void sendShellCommandToHost(const String& requestId, const String& command);
+
+    /**
+     * @brief 向主机发送运行命令请求（支持指定shell类型）
+     * @param requestId 请求ID，用于追踪请求-响应对
+     * @param command 要执行的命令
+     * @param shell Shell类型（如"powershell", "pwsh", "cmd", "bash"等），为空则自动检测
+     */
+    void sendRunCommandToHost(const String& requestId, const String& command, const String& shell = "");
 
     /**
      * @brief 向主机发送AI响应

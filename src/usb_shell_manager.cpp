@@ -14,8 +14,11 @@
 #include "llm_manager.h"    // AI管理器
 #include "USBHIDKeyboard.h" // HID键盘模拟
 
-// 定义JSON文档缓冲区大小
-const size_t JSON_DOC_SIZE = 1024; 
+// 定义JSON文档缓冲区大小（增加到64KB以处理大输出）
+const size_t JSON_DOC_SIZE = 65536;
+
+// 定义输入缓冲区最大大小（64KB，防止内存溢出）
+const size_t MAX_INPUT_BUFFER_SIZE = 65536; 
 
 // 创建HID键盘实例
 USBHIDKeyboard Keyboard;
@@ -111,16 +114,38 @@ void UsbShellManager::loop() {
  * 3. 当接收到换行符时，处理完整的消息（JSON或简单文本）
  */
 void UsbShellManager::handleUsbSerialData() {
-    if (_cdc.available()) {
+    // 一次读取多个字符，减少CDC缓冲区溢出风险
+    const size_t maxReadPerCall = 256; // 每次最多读取256字节
+    size_t bytesRead = 0;
+    
+    while (_cdc.available() && bytesRead < maxReadPerCall) {
         char c = _cdc.read();
+        bytesRead++;
+        
+        // 检查缓冲区大小，防止内存溢出
+        if (_inputBuffer.length() >= MAX_INPUT_BUFFER_SIZE) {
+            Serial.println("[CDC] Input buffer overflow! Clearing buffer.");
+            _inputBuffer = "";
+            sendToHost("{\"type\":\"error\",\"content\":\"Input buffer overflow\"}");
+            return;
+        }
+        
         _inputBuffer += c;
 
         // 假定消息以换行符结尾
         if (c == '\n') {
             String message = _inputBuffer;
             message.trim();
-            Serial.print("Received from host: ");
-            Serial.println(message);
+            
+            // 只打印消息的前200个字符用于调试，避免串口输出过多
+            if (message.length() > 200) {
+                Serial.print("Received from host (truncated): ");
+                Serial.print(message.substring(0, 200));
+                Serial.println("...");
+            } else {
+                Serial.print("Received from host: ");
+                Serial.println(message);
+            }
             
             // 如果消息以 '{' 开头则视为 JSON 格式并处理
             if (message.startsWith("{")) {
@@ -131,6 +156,7 @@ void UsbShellManager::handleUsbSerialData() {
             }
             
             _inputBuffer = ""; // Clear buffer after processing
+            break; // 处理完一条消息后退出，下次loop继续处理
         }
     }
 }
@@ -147,6 +173,8 @@ void UsbShellManager::handleUsbSerialData() {
  * @param message JSON格式的消息字符串
  */
 void UsbShellManager::processHostMessage(const String& message) {
+    // 使用JSON文档以处理大消息
+    // JsonDocument 会自动管理内存，根据消息大小动态分配
     JsonDocument doc;
     DeserializationError error = deserializeJson(doc, message);
 
@@ -178,8 +206,8 @@ void UsbShellManager::processHostMessage(const String& message) {
         String command = doc["payload"]["command"] | ""; // Assuming command is part of payload for context
         String shellStdout = doc["payload"]["stdout"] | "";
         String shellStderr = doc["payload"]["stderr"] | "";
-        String status = doc["status"] | "error"; // New status field
-        int exitCode = doc["exitCode"] | -1; // New exitCode field
+        String status = doc["payload"]["status"] | "error"; // Status is inside payload
+        int exitCode = doc["payload"]["exitCode"] | -1; // ExitCode is inside payload
         
         Serial.print("Shell output for '");
         Serial.print(command);
@@ -213,7 +241,7 @@ void UsbShellManager::sendToHost(const String& message) {
 }
 
 /**
- * @brief 向主机发送Shell命令请求
+ * @brief 向主机发送Shell命令请求（已废弃，使用sendRunCommandToHost替代）
  * 
  * 构造JSON格式：
  * {
@@ -230,6 +258,39 @@ void UsbShellManager::sendShellCommandToHost(const String& requestId, const Stri
     doc["requestId"] = requestId;
     doc["type"] = "shellCommand";
     doc["payload"] = command;
+    String output;
+    serializeJson(doc, output);
+    sendToHost(output);
+}
+
+/**
+ * @brief 向主机发送运行命令请求（支持指定shell类型）
+ * 
+ * 构造JSON格式：
+ * {
+ *   "requestId": "xxx",
+ *   "type": "runCommand",
+ *   "payload": {
+ *     "command": "command string",
+ *     "shell": "powershell" (可选)
+ *   }
+ * }
+ * 
+ * @param requestId 请求ID
+ * @param command 要执行的命令
+ * @param shell Shell类型（如"powershell", "pwsh", "cmd", "bash"等），为空则自动检测
+ */
+void UsbShellManager::sendRunCommandToHost(const String& requestId, const String& command, const String& shell) {
+    JsonDocument doc;
+    doc["requestId"] = requestId;
+    doc["type"] = "runCommand";
+    
+    JsonObject payload = doc["payload"].to<JsonObject>();
+    payload["command"] = command;
+    if (!shell.isEmpty()) {
+        payload["shell"] = shell;
+    }
+    
     String output;
     serializeJson(doc, output);
     sendToHost(output);

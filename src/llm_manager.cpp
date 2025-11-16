@@ -501,239 +501,70 @@ String LLMManager::generateSystemPrompt(LLMMode mode) {
             "You are a helpful and friendly AI assistant. "
             "Respond concisely and accurately to user queries with clear explanations.";
         
-        // ============ 高级模式提示词（完整版，整合所有工具描述）============
+        // ============ 高级模式提示词 ============
         cachedAdvancedPrompt = 
-            "# Your Role\n"
-            "You are an advanced AI assistant integrated into an ESP32-S3 device with multi-modal capabilities. "
-            "You can interact with the host computer through shell commands, USB HID (keyboard/mouse), and GPIO control. "
-            "Your purpose is to help users accomplish tasks by intelligently combining these capabilities.\n"
-            "\n"
-            "# Core Capabilities\n"
-            "1. **Command Execution**: Execute shell commands on the host computer and analyze their output\n"
-            "2. **Natural Language Communication**: Provide explanations, suggestions, and responses to users\n"
-            "3. **USB HID Control**: Simulate keyboard typing and mouse operations on the host computer\n"
-            "4. **GPIO Control**: Control hardware pins (LEDs and GPIO) on the ESP32-S3 device\n"
+            "You are an AI assistant integrated into an ESP32-S3 device. "
+            "You can execute shell commands on the host computer, control USB HID devices (keyboard/mouse), and manage GPIO pins. "
+            "You receive command execution results and can analyze them to provide helpful responses.\n"
             "\n"
             "# Available Tools\n"
             "\n"
-            "## Primary Tool: sendtoshell\n"
-            "Use this tool when you need to execute commands or send structured responses.\n"
+            "## run_command\n"
+            "Execute shell commands on the host and receive stdout/stderr results.\n"
+            "- **command** (required): Shell command string\n"
+            "- **shell** (optional): \"powershell\", \"pwsh\", \"cmd\", \"bash\", \"sh\". Default: auto-detect\n"
             "\n"
-            "**Parameters** (both required):\n"
-            "  - type: string - MUST be exactly \"command\" or \"text\" (case-sensitive)\n"
-            "  - value: string - The command string or text message (non-empty)\n"
-            "\n"
-            "**When to use**:\n"
-            "  • type=\"command\": Execute shell commands on the host computer\n"
-            "    - File operations: ls, cat, mkdir, rm, etc.\n"
-            "    - System queries: pwd, whoami, hostname, etc.\n"
-            "    - App launching: open/start applications\n"
-            "  • type=\"text\": Send structured text messages to the user\n"
-            "    - Important status updates\n"
-            "    - Notifications that don't require action\n"
-            "\n"
-            "**Best Practices**:\n"
-            "  • Always validate both parameters are present\n"
-            "  • Use platform-appropriate commands (consider Windows/Linux/Mac differences)\n"
-            "  • For destructive operations, confirm with user first\n"
-            "  • Keep commands simple and atomic when possible\n"
-            "\n"
-            "**Common Mistakes to Avoid**:\n"
-            "  • DO NOT use empty values\n"
-            "  • DO NOT use types other than \"command\" or \"text\"\n"
-            "  • DO NOT chain complex commands without understanding the shell environment\n"
-            "  • DO NOT assume the working directory or environment variables\n"
-            "\n"
-            "## HID Tools: USB Keyboard and Mouse Control\n"
-            "\n"
-            "### hid_keyboard_type\n"
+            "## hid_keyboard_type\n"
             "Type text via USB HID keyboard emulation.\n"
+            "- **text** (required): Text to type\n"
             "\n"
-            "**Parameters** (required):\n"
-            "  - text: string - The text to type (non-empty)\n"
-            "\n"
-            "**Example** (return as raw JSON):\n"
-            "{\"tool_calls\": [{\"name\": \"hid_keyboard_type\", \"args\": {\"text\": \"Hello World\"}}]}\n"
-            "\n"
-            "\n"
-            "### hid_keyboard_press\n"
+            "## hid_keyboard_press\n"
             "Press key combinations or special keys.\n"
+            "- **keys** (required): \"Ctrl+C\", \"Alt+Tab\", \"Enter\", etc.\n"
             "\n"
-            "**Parameters** (required):\n"
-            "  - keys: string - Key combination like \"Ctrl+C\", \"Alt+Tab\", or special key like \"Enter\"\n"
+            "## hid_keyboard_macro\n"
+            "Execute a sequence of keyboard actions.\n"
+            "- **actions** (required): Array of {\"action\": \"type|press|delay\", ...}\n"
             "\n"
-            "**Supported modifiers**: Ctrl, Shift, Alt, Win (case-insensitive)\n"
-            "**Supported special keys**: F1-F12, Enter, Tab, Backspace, Escape, Home, End, PageUp, PageDown, Delete, Arrow keys\n"
+            "## gpio_set\n"
+            "Control GPIO pins on ESP32-S3 device.\n"
+            "- **gpio** (required): \"led1\", \"led2\", \"led3\", \"gpio1\", \"gpio2\"\n"
+            "- **state** (required): true (HIGH) or false (LOW)\n"
             "\n"
-            "**Examples**:\n"
-            "  - Copy: \"Ctrl+C\"\n"
-            "  - Paste: \"Ctrl+V\"\n"
-            "  - Switch window: \"Alt+Tab\"\n"
-            "  - Task manager: \"Ctrl+Shift+Esc\"\n"
-            "  - Press Enter: \"Enter\"\n"
+            "# Response Format - CRITICAL\n"
             "\n"
-            "### hid_keyboard_macro\n"
-            "Execute a sequence of keyboard/mouse actions.\n"
+            "**You MUST output raw JSON only when using tools. NO markdown code blocks.**\n"
             "\n"
-            "**Parameters** (required):\n"
-            "  - actions: array - Array of action objects\n"
+            "**Format 1: JSON with tools (recommended when action needed)**\n"
+            "Output ONLY the JSON object, nothing else:\n"
+            "{\"tool_calls\": [{\"name\": \"run_command\", \"args\": {\"command\": \"Get-Process\", \"shell\": \"powershell\"}}], \"text\": \"Checking running processes...\"}\n"
             "\n"
-            "**Action types**:\n"
-            "  - {\"action\": \"type\", \"value\": \"text\"} - Type text\n"
-            "  - {\"action\": \"press\", \"key\": \"Ctrl+C\"} - Press key combination\n"
-            "  - {\"action\": \"delay\", \"ms\": 500} - Wait specified milliseconds\n"
-            "  - {\"action\": \"click\", \"button\": \"left\"} - Click mouse button\n"
-            "  - {\"action\": \"move\", \"x\": 10, \"y\": 20} - Move mouse\n"
+            "**Format 2: Pure text (when no action needed)**\n"
+            "Just write plain text, no JSON.\n"
             "\n"
-            "**Example** (return as raw JSON):\n"
-            "{\"tool_calls\": [{\"name\": \"hid_keyboard_macro\", \"args\": {\"actions\": "
-            "[{\"action\": \"type\", \"value\": \"notepad\"}, {\"action\": \"delay\", \"ms\": 500}, "
-            "{\"action\": \"press\", \"key\": \"Enter\"}]}}]}\n"
+            "**IMPORTANT RULES:**\n"
+            "1. When outputting JSON, write ONLY the JSON object. Do NOT wrap it in ```json or ```\n"
+            "2. You can include explanatory text BEFORE the JSON, and it will be sent to the user\n"
+            "3. The \"text\" field in JSON provides additional context that's sent after tool execution\n"
+            "4. Command results are returned to you automatically - analyze them and respond accordingly\n"
             "\n"
+            "**Examples:**\n"
             "\n"
-            "### hid_mouse_click\n"
-            "Click mouse button.\n"
+            "Example 1 - Pure JSON (best for tool calls):\n"
+            "{\"tool_calls\": [{\"name\": \"run_command\", \"args\": {\"command\": \"ipconfig\", \"shell\": \"cmd\"}}], \"text\": \"Checking network configuration...\"}\n"
             "\n"
-            "**Parameters** (optional):\n"
-            "  - button: string - \"left\" (default), \"right\", or \"middle\"\n"
+            "Example 2 - Text before JSON (also supported):\n"
+            "Let me check your network settings:\n"
+            "{\"tool_calls\": [{\"name\": \"run_command\", \"args\": {\"command\": \"ipconfig\"}}]}\n"
             "\n"
-            "### hid_mouse_move\n"
-            "Move mouse cursor relatively.\n"
+            "Example 3 - Pure text (no action):\n"
+            "I can help you with system commands, file operations, and hardware control. What would you like to do?\n"
             "\n"
-            "**Parameters** (required):\n"
-            "  - x: integer - Horizontal movement (positive=right, negative=left)\n"
-            "  - y: integer - Vertical movement (positive=down, negative=up)\n"
-            "\n"
-            "## GPIO Tools: Hardware Pin Control\n"
-            "\n"
-            "### gpio_set\n"
-            "Control GPIO output pins on the ESP32-S3 device.\n"
-            "\n"
-            "**Parameters** (required):\n"
-            "  - gpio: string - GPIO name from the available list\n"
-            "  - state: boolean - true for HIGH, false for LOW\n"
-            "\n"
-            "**Available GPIOs**:\n"
-            "  - led1, led2, led3 - Onboard LED indicators\n"
-            "  - gpio1, gpio2 - Reserved general-purpose GPIO pins\n"
-            "\n"
-            "**Use Cases**:\n"
-            "  - Control indicator LEDs for status display\n"
-            "  - Trigger external devices via GPIO pins\n"
-            "  - Create visual feedback patterns\n"
-            "\n"
-            "**Examples** (return as raw JSON):\n"
-            "Turn on LED 1:\n"
-            "{\"tool_calls\": [{\"name\": \"gpio_set\", \"args\": {\"gpio\": \"led1\", \"state\": true}}]}\n"
-            "\n"
-            "Turn off all LEDs:\n"
-            "{\"tool_calls\": [{\"name\": \"gpio_set\", \"args\": {\"gpio\": \"led1\", \"state\": false}}, "
-            "{\"name\": \"gpio_set\", \"args\": {\"gpio\": \"led2\", \"state\": false}}, "
-            "{\"name\": \"gpio_set\", \"args\": {\"gpio\": \"led3\", \"state\": false}}]}\n"
-            "\n"
-            "\n"
-            "**Note**: Only output control is supported. GPIO names are case-insensitive.\n"
-            "\n"
-            "# Response Modes\n"
-            "\n"
-            "You have TWO ways to respond:\n"
-            "\n"
-            "## Mode 1: Tool Call (Pure JSON Format)\n"
-            "Use when you need to execute commands or send structured data.\n"
-            "\n"
-            "**CRITICAL: Return ONLY the raw JSON object. DO NOT wrap it in markdown code blocks (```json or ```).**\n"
-            "\n"
-            "Example (return exactly this format):\n"
-            "{\n"
-            "  \"tool_calls\": [\n"
-            "    {\n"
-            "      \"name\": \"sendtoshell\",\n"
-            "      \"args\": {\n"
-            "        \"type\": \"command\",\n"
-            "        \"value\": \"ls -lah\"\n"
-            "      }\n"
-            "    }\n"
-            "  ]\n"
-            "}\n"
-            "\n"
-            "For multiple tool calls, add more objects to the array:\n"
-            "{\n"
-            "  \"tool_calls\": [\n"
-            "    {\"name\": \"gpio_set\", \"args\": {\"gpio\": \"led1\", \"state\": true}},\n"
-            "    {\"name\": \"gpio_set\", \"args\": {\"gpio\": \"led2\", \"state\": true}}\n"
-            "  ]\n"
-            "}\n"
-            "\n"
-            "## Mode 2: Natural Language (Direct Text)\n"
-            "Use for casual conversation, explanations, questions, or when no action is needed.\n"
-            "Simply respond with plain text (no JSON):\n"
-            "\n"
-            "I can help you manage files, execute commands, and automate tasks on your computer. "
-            "What would you like me to do?\n"
-            "\n"
-            "\n"
-            "# When to Use Each Mode\n"
-            "\n"
-            "**Use JSON Tool Call when**:\n"
-            "- User asks you to DO something (execute, create, delete, run, etc.)\n"
-            "- You need to execute a shell command\n"
-            "- Taking action is required\n"
-            "\n"
-            "**Use Natural Language when**:\n"
-            "- User asks ABOUT something (what, how, why, explain)\n"
-            "- Providing explanations or suggestions\n"
-            "- Casual conversation or clarifying questions\n"
-            "- Analyzing or interpreting command results\n"
-            "- No action is immediately needed\n"
-            "\n"
-            "# Example Interactions\n"
-            "\n"
-            "**Example 1: Action Required (JSON)**\n"
-            "User: \"List all files in the current directory\"\n"
-            "Your response (raw JSON, no markdown):\n"
-            "{\"tool_calls\": [{\"name\": \"sendtoshell\", \"args\": {\"type\": \"command\", \"value\": \"ls -lah\"}}]}\n"
-            "\n"
-            "**Example 2: Explanation (Natural Language)**\n"
-            "User: \"What can you help me with?\"\n"
-            "Your response (plain text):\n"
-            "I can help you with various tasks on your computer! I can execute shell commands, "
-            "manage files and directories, run applications, check system status, and automate "
-            "repetitive tasks. Just tell me what you need, and I'll do my best to help!\n"
-            "\n"
-            "**Example 3: Analysis (Natural Language)**\n"
-            "User: \"Previous command output: [error logs]\"\n"
-            "Your response (plain text):\n"
-            "It looks like there's a permission error. The file you're trying to access requires "
-            "elevated privileges. Would you like me to try running the command with sudo?\n"
-            "\n"
-            "**Example 4: Follow-up Action (JSON)**\n"
-            "User: \"Yes, use sudo\"\n"
-            "Your response (raw JSON, no markdown):\n"
-            "{\"tool_calls\": [{\"name\": \"sendtoshell\", \"args\": {\"type\": \"command\", \"value\": \"sudo cat /var/log/syslog\"}}]}\n"
-            "\n"
-            "**Example 5: Multiple GPIO Controls (JSON)**\n"
-            "User: \"Turn on all LEDs\"\n"
-            "Your response (raw JSON with multiple tool calls):\n"
-            "{\"tool_calls\": [{\"name\": \"gpio_set\", \"args\": {\"gpio\": \"led1\", \"state\": true}}, "
-            "{\"name\": \"gpio_set\", \"args\": {\"gpio\": \"led2\", \"state\": true}}, "
-            "{\"name\": \"gpio_set\", \"args\": {\"gpio\": \"led3\", \"state\": true}}]}\n"
-            "\n"
-            "\n"
-            "# Decision Making Guidelines\n"
-            "1. **Understand intent**: Is the user asking you to DO or to EXPLAIN?\n"
-            "2. **Choose response mode**: Action → JSON, Conversation → Natural Language\n"
-            "3. **JSON format**: When using tool calls, return ONLY raw JSON. NEVER use ```json or ``` wrappers\n"
-            "4. **Be contextual**: Consider previous commands and their output\n"
-            "5. **Be safe**: Avoid destructive commands without clear confirmation\n"
-            "6. **Be helpful**: Explain complex operations, suggest alternatives\n"
-            "7. **Be efficient**: Use the most direct approach to achieve the goal\n"
-            "\n"
-            "**CRITICAL REMINDER**: For tool calls, output pure JSON like this:\n"
-            "{\"tool_calls\": [{\"name\": \"tool_name\", \"args\": {...}}]}\n"
-            "NOT like this: ```json\\n{...}\\n```\n"
-            "\n"
-            "Choose the response mode that best fits the situation. Don't force JSON when "
-            "natural conversation is more appropriate!";
+            "**Best Practices:**\n"
+            "- Always use the \"text\" field when calling tools to explain what you're doing\n"
+            "- Analyze command outputs carefully before taking next actions\n"
+            "- Use appropriate shell types (powershell for Windows PowerShell, cmd for CMD, etc.)\n"
+            "- Be concise but informative in your responses";
         
         initialized = true;
     }
@@ -769,16 +600,71 @@ void LLMManager::handleLLMRawResponse(const String& requestId, const String& pro
     
     cleanedContent.trim();
 
-    JsonDocument contentDoc;
-    DeserializationError error = deserializeJson(contentDoc, cleanedContent);
+    // 尝试从内容中提取JSON（可能前面有自然语言文本）
+    String jsonPart = "";
+    String textBeforeJson = "";
+    
+    // 查找第一个 '{' 字符，这可能是JSON的开始
+    int jsonStart = cleanedContent.indexOf('{');
+    if (jsonStart >= 0) {
+        // 找到JSON开始位置
+        textBeforeJson = cleanedContent.substring(0, jsonStart);
+        textBeforeJson.trim(); // trim() 不返回值，直接修改字符串
+        jsonPart = cleanedContent.substring(jsonStart);
+        
+        // 尝试找到匹配的 '}' 来确认完整的JSON
+        // 简单方法：从后往前找最后一个 '}'
+        int jsonEnd = cleanedContent.lastIndexOf('}');
+        if (jsonEnd > jsonStart) {
+            jsonPart = cleanedContent.substring(jsonStart, jsonEnd + 1);
+        }
+    } else {
+        // 没有找到JSON，整个内容都是文本
+        jsonPart = "";
+        textBeforeJson = cleanedContent;
+    }
 
+    JsonDocument contentDoc;
+    DeserializationError error = DeserializationError::Ok;
+    
+    // 在作用域外定义textExplanation，以便在多个地方使用
+    String textExplanation = "";
+    
+    // 如果有JSON部分，尝试解析
+    if (!jsonPart.isEmpty()) {
+        error = deserializeJson(contentDoc, jsonPart);
+        if (error) {
+            Serial.printf("handleLLMRawResponse: JSON parse error: %s, trying full content\n", error.c_str());
+            // JSON解析失败，尝试解析整个内容
+            error = deserializeJson(contentDoc, cleanedContent);
+        }
+    } else {
+        // 没有JSON部分，标记为解析失败
+        error = DeserializationError::InvalidInput;
+    }
+    
     if (error) {
         // JSON解析失败，视为自然语言响应
         Serial.printf("handleLLMRawResponse: Natural language response (parse error: %s)\n", error.c_str());
         _usbShellManager->sendAiResponseToHost(requestId, llmContentString);
         allocateResponseString(response.naturalLanguageResponse, llmContentString);
     } else {
-        // 成功解析JSON，检查是否有工具调用
+        // 成功解析JSON
+        // 如果JSON前面有文本，先发送前面的文本
+        if (!textBeforeJson.isEmpty()) {
+            Serial.printf("handleLLMRawResponse: Found text before JSON: %s\n", textBeforeJson.c_str());
+            _usbShellManager->sendAiResponseToHost(requestId, textBeforeJson);
+        }
+        
+        // 检查JSON中是否有text字段
+        textExplanation = contentDoc["text"] | "";
+        if (!textExplanation.isEmpty()) {
+            Serial.printf("handleLLMRawResponse: Found text in JSON: %s\n", textExplanation.c_str());
+            // 发送JSON中的文本说明
+            _usbShellManager->sendAiResponseToHost(requestId, textExplanation);
+        }
+        
+        // 检查是否有工具调用
         if (contentDoc["tool_calls"].is<JsonArray>() && contentDoc["tool_calls"].size() > 0) {
             JsonArray toolCalls = contentDoc["tool_calls"].as<JsonArray>();
             Serial.printf("handleLLMRawResponse: Processing %d tool calls\n", toolCalls.size());
@@ -792,20 +678,15 @@ void LLMManager::handleLLMRawResponse(const String& requestId, const String& pro
                 JsonObject toolCall = toolCallVariant.as<JsonObject>();
                 String toolName = toolCall["name"] | "";
 
-            if (toolName == "sendtoshell") {
-                String outputType = toolCall["args"]["type"] | "";
-                String value = toolCall["args"]["value"] | "";
+            if (toolName == "run_command") {
+                // 处理run_command工具
+                String command = toolCall["args"]["command"] | "";
+                String shell = toolCall["args"]["shell"] | "";
 
                 // 参数验证
-                if (outputType.isEmpty() || value.isEmpty()) {
-                    Serial.println("LLM called sendtoshell with missing parameters");
-                    String errorMsg = "Error: sendtoshell requires both 'type' and 'value' parameters";
-                    _usbShellManager->sendAiResponseToHost(requestId, errorMsg);
-                    allocateResponseString(response.naturalLanguageResponse, errorMsg);
-                    response.isToolCall = false;
-                } else if (outputType != "command" && outputType != "text") {
-                    Serial.printf("LLM called sendtoshell with invalid type: %s\n", outputType.c_str());
-                    String errorMsg = "Error: sendtoshell type must be 'command' or 'text', got: " + outputType;
+                if (command.isEmpty()) {
+                    Serial.println("LLM called run_command with missing command parameter");
+                    String errorMsg = "Error: run_command requires 'command' parameter";
                     _usbShellManager->sendAiResponseToHost(requestId, errorMsg);
                     allocateResponseString(response.naturalLanguageResponse, errorMsg);
                     response.isToolCall = false;
@@ -817,19 +698,16 @@ void LLMManager::handleLLMRawResponse(const String& requestId, const String& pro
                     
                     // 构建toolArgs的JSON字符串
                     JsonDocument argsDoc;
-                    argsDoc["type"] = outputType;
-                    argsDoc["value"] = value;
+                    argsDoc["command"] = command;
+                    if (!shell.isEmpty()) {
+                        argsDoc["shell"] = shell;
+                    }
                     String argsStr;
                     serializeJson(argsDoc, argsStr);
                     allocateResponseString(response.toolArgs, argsStr);
 
-                    if (outputType == "command") {
-                        Serial.printf("LLM requested shell command: %s\n", value.c_str());
-                        _usbShellManager->sendShellCommandToHost(requestId, value);
-                    } else if (outputType == "text") {
-                        Serial.printf("LLM requested AI response: %s\n", value.c_str());
-                        _usbShellManager->sendAiResponseToHost(requestId, value);
-                    }
+                    Serial.printf("LLM requested run_command: %s (shell: %s)\n", command.c_str(), shell.isEmpty() ? "auto" : shell.c_str());
+                    _usbShellManager->sendRunCommandToHost(requestId, command, shell);
                 }
             } else if (toolName == "hid_keyboard_type") {
                 // 输入文本字符串
@@ -939,62 +817,6 @@ void LLMManager::handleLLMRawResponse(const String& requestId, const String& pro
                     allocateResponseString(response.naturalLanguageResponse, errorMsg);
                     response.isToolCall = false;
                 }
-            } else if (toolName == "hid_mouse_click") {
-                // 处理鼠标点击
-                String button = toolCall["args"]["button"] | "left";
-                int buttonCode = MOUSE_BUTTON_LEFT;
-                
-                if (button == "right") buttonCode = MOUSE_BUTTON_RIGHT;
-                else if (button == "middle") buttonCode = MOUSE_BUTTON_MIDDLE;
-                
-                if (_hidManager && _hidManager->isReady()) {
-                    Serial.printf("LLM requested mouse click: %s\n", button.c_str());
-                    _hidManager->clickMouse(buttonCode);
-                    String successMsg = "Clicked mouse button: " + button;
-                    _usbShellManager->sendAiResponseToHost(requestId, successMsg);
-                    
-                    response.isToolCall = true;
-                    strncpy(response.toolName, toolName.c_str(), sizeof(response.toolName) - 1);
-                    response.toolName[sizeof(response.toolName) - 1] = '\0';
-                    
-                    JsonDocument argsDoc;
-                    argsDoc["button"] = button;
-                    String argsStr;
-                    serializeJson(argsDoc, argsStr);
-                    allocateResponseString(response.toolArgs, argsStr);
-                } else {
-                    String errorMsg = "Error: HID not available";
-                    _usbShellManager->sendAiResponseToHost(requestId, errorMsg);
-                    allocateResponseString(response.naturalLanguageResponse, errorMsg);
-                    response.isToolCall = false;
-                }
-            } else if (toolName == "hid_mouse_move") {
-                // 处理鼠标移动
-                int x = toolCall["args"]["x"] | 0;
-                int y = toolCall["args"]["y"] | 0;
-                
-                if (_hidManager && _hidManager->isReady()) {
-                    Serial.printf("LLM requested mouse move: x=%d, y=%d\n", x, y);
-                    _hidManager->moveMouse(x, y);
-                    String successMsg = "Moved mouse by (" + String(x) + ", " + String(y) + ")";
-                    _usbShellManager->sendAiResponseToHost(requestId, successMsg);
-                    
-                    response.isToolCall = true;
-                    strncpy(response.toolName, toolName.c_str(), sizeof(response.toolName) - 1);
-                    response.toolName[sizeof(response.toolName) - 1] = '\0';
-                    
-                    JsonDocument argsDoc;
-                    argsDoc["x"] = x;
-                    argsDoc["y"] = y;
-                    String argsStr;
-                    serializeJson(argsDoc, argsStr);
-                    allocateResponseString(response.toolArgs, argsStr);
-                } else {
-                    String errorMsg = "Error: HID not available";
-                    _usbShellManager->sendAiResponseToHost(requestId, errorMsg);
-                    allocateResponseString(response.naturalLanguageResponse, errorMsg);
-                    response.isToolCall = false;
-                }
             } else if (toolName == "gpio_set") {
                 // 设置 GPIO 输出状态
                 String gpioName = toolCall["args"]["gpio"] | "";
@@ -1045,10 +867,17 @@ void LLMManager::handleLLMRawResponse(const String& requestId, const String& pro
             }
             } // 结束工具调用循环
         } else {
-            // 解析成功但没有tool_calls，视为自然语言响应
-            Serial.println("handleLLMRawResponse: No tool_calls, treating as natural language.");
-            _usbShellManager->sendAiResponseToHost(requestId, llmContentString);
-            allocateResponseString(response.naturalLanguageResponse, llmContentString);
+            // 解析成功但没有tool_calls
+            // 如果之前已经发送了text说明，就不需要再发送了
+            if (textExplanation.isEmpty()) {
+                // 没有text也没有tool_calls，视为自然语言响应
+                Serial.println("handleLLMRawResponse: No tool_calls and no text, treating as natural language.");
+                _usbShellManager->sendAiResponseToHost(requestId, llmContentString);
+                allocateResponseString(response.naturalLanguageResponse, llmContentString);
+            } else {
+                // 只有text，已经发送过了，不需要再处理
+                Serial.println("handleLLMRawResponse: Only text field found, already sent.");
+            }
         }
     }
 
