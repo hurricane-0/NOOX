@@ -3,10 +3,7 @@
 ## 文档信息
 
 - **项目名称**: NOOX ESP32-S3 AI 智能硬件平台
-- **版本**: 3.1
-- **文档日期**: 2025-11-16
-- **文档状态**: 更新版
-- **维护人**: NOOX 开发团队
+- **文档日期**: 2025-11-17
 
 ---
 
@@ -56,43 +53,137 @@ NOOX 是一个基于 ESP32-S3 的智能硬件平台，集成了大语言模型�
 ## 2. 系统架构
 
 ### 2.1 总体架构
+flowchart LR
+  %% Detailed module interaction map (Browser and Cloud split into separate blocks)
+  %% Note: texts are wrapped in quotes and use <br/> for line breaks
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        用户交互层                             │
-├───────────────┬───────────────┬──────────────┬──────────────┤
-│  Web浏览器    │  OLED+按键    │  USB Shell   │  USB HID     │
-│  (WebSocket)  │  (本地显示)   │  (CDC串口)   │  (键盘/鼠标)  │
-└───────┬───────┴───────┬───────┴───────┬──────┴──────┬───────┘
-        │               │               │             │
-        ▼               ▼               ▼             ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      应用管理层                               │
-├──────────────┬──────────────┬──────────────┬────────────────┤
-│ WebManager   │ UIManager    │UsbShellMgr   │ HIDManager     │
-└──────┬───────┴──────┬───────┴──────┬───────┴────────┬───────┘
-       │              │              │                │
-       └──────────────┴──────────────┴────────┬───────┘
-                                              ▼
-                                    ┌──────────────────┐
-                                    │   LLMManager     │
-                                    │  (AI核心引擎)    │
-                                    └────────┬─────────┘
-                                             │
-                    ┌────────────────────────┼────────────────────────┐
-                    ▼                        ▼                        ▼
-          ┌─────────────────┐    ┌──────────────────┐    ┌──────────────────┐
-          │  WiFiManager    │    │ ConfigManager    │    │ HardwareManager  │
-          │  (网络连接)      │    │  (配置管理)      │    │  (硬件抽象层)    │
-          └─────────────────┘    └──────────────────┘    └──────────────────┘
-                    │                        │                        │
-                    └────────────────────────┴────────────────────────┘
-                                             ▼
-                                    ┌──────────────────┐
-                                    │   ESP32-S3硬件   │
-                                    │ (Flash/PSRAM)    │
-                                    └──────────────────┘
-```
+  subgraph "ESP32-S3 Device"
+    direction TB
+
+    subgraph "Storage (LittleFS)"
+      LFS_CONF["/config.json"]
+      LFS_WEB["/index.html.gz<br/>/style.css.gz<br/>/script.js.gz"]
+      LFS_AGENT["/agent/noox-host-agent(.exe|-macos|-linux)"]
+    end
+
+    subgraph "Core Managers"
+      CFGM["ConfigManager<br/>- load/save config.json"]
+      WIFIM["WiFiManager<br/>- connect/disconnect<br/>- status/IP"]
+      HWM["HardwareManager<br/>- GPIO/LEDs/OLED bus"]
+      HIDM["HIDManager<br/>- keyboard/mouse macros<br/>- PowerShell bootstrap"]
+      USM["UsbShellManager<br/>- USB CDC JSON bridge<br/>- input buffer 64KB cap"]
+      WM["WebManager (HTTP+WS)<br/>- /, /style.css, /script.js<br/>- /api/config (GET/POST)<br/>- /api/wifi/(connect|disconnect|delete)<br/>- /api/agent/download?platform=..."]
+      LLMM["LLMManager<br/>- OpenAI-compatible HTTP(S)<br/>- tools: run_command, hid_keyboard_*, gpio_set<br/>- history ring buffer (40 msgs)"]
+    end
+
+    subgraph "FreeRTOS Tasks"
+      T_WEB["WebTask<br/>loop: WebManager.loop()<br/>period ~10ms"]
+      T_USB["USBTask<br/>loop: UsbShellManager.loop()<br/>period ~3ms"]
+      T_UI["UITask<br/>loop: UIManager.update()<br/>period ~10ms"]
+      T_LLM["LLMTask<br/>loop: LLMManager.loop()<br/>period ~10ms"]
+    end
+
+    subgraph "Queues"
+      Q_REQ["llmRequestQueue (depth 3)"]
+      Q_RES["llmResponseQueue (depth 3)"]
+    end
+
+    UIM["UIManager<br/>- OLED + Buttons<br/>- menus/status"]
+  end
+
+  subgraph "Host Computer"
+    direction TB
+    HOST_OS["Host OS"]
+    AGENT["NOOX Host Agent<br/>(noox-agent.exe)"]
+    SHELL["Host Shell<br/>(powershell/pwsh/cmd/bash/sh)"]
+    TERM["Terminal Window<br/>(user sees logs)"]
+  end
+
+  subgraph "Web Browser"
+    direction TB
+    BROWSER["Web Client"]
+  end
+
+  subgraph "Cloud Providers"
+    direction TB
+    LLM_API["LLM Providers<br/>(OpenRouter / DeepSeek / OpenAI)"]
+  end
+
+  %% Filesystem relations
+  CFGM --- LFS_CONF
+  WM --- LFS_WEB
+  WM --- LFS_AGENT
+
+  %% Config dependencies
+  CFGM <--> WIFIM
+  CFGM <--> LLMM
+
+  %% Task bindings
+  T_WEB --> WM
+  T_USB --> USM
+  T_UI --> UIM
+  T_LLM --> LLMM
+
+  %% UI interactions
+  UIM --> HWM
+  UIM --> WIFIM
+  UIM --> LLMM
+
+  %% Web interactions (Browser ↔ WebManager)
+  BROWSER <--> |"HTTP: '/', '/style.css', '/script.js'"| WM
+  BROWSER <--> |"WebSocket: '/ws'"| WM
+
+  %% REST APIs
+  BROWSER --> |"GET '/api/config'"| WM
+  BROWSER --> |"POST '/api/config' (deferred apply)"| WM
+  BROWSER --> |"POST '/api/wifi/connect' (ssid,password)"| WM
+  BROWSER --> |"POST '/api/wifi/disconnect'"| WM
+  BROWSER --> |"POST '/api/wifi/delete' (ssid)"| WM
+
+  %% WebManager to managers
+  WM --> |"get/set config"| CFGM
+  WM --> |"wifi ops"| WIFIM
+  WM --> |"broadcast LLM responses via WS"| BROWSER
+
+  %% HID bootstrap for Agent download
+  HIDM --> |"Win+R → 'powershell'"| HOST_OS
+  HOST_OS --> |"PowerShell window"| TERM
+  HIDM --> |"Type Invoke-WebRequest<br/>GET '/api/agent/download?platform=windows'<br/>→ $env:TEMP\\noox-agent.exe"| HOST_OS
+  HOST_OS --> |"Launch agent: & noox-agent.exe"| AGENT
+
+  %% Agent downloads binary via WebManager
+  AGENT --> |"HTTP GET '/api/agent/download?platform=...'"| WM
+  WM --> |"serve binary (LittleFS)"| AGENT
+
+  %% USB CDC JSON channel (Agent ↔ UsbShellManager)
+  AGENT <--> |"USB CDC JSON<br/>{requestId,type,payload}\n"| USM
+
+  %% Typical message types
+  USM --> |"aiResponse"| AGENT
+  USM --> |"runCommand (payload:{command,shell?})"| AGENT
+  AGENT --> |"shellCommandResult (payload:{command,stdout,stderr,status,exitCode})"| USM
+  AGENT <--> |"linkTest / linkTestResult"| USM
+  AGENT --> |"userInput (from terminal)"| USM
+
+  %% Agent executes commands on Host
+  AGENT --> |"exec command"| SHELL
+  SHELL --> |"stdout/stderr/exitCode"| AGENT
+  AGENT --> |"print logs & AI reply"| TERM
+
+  %% LLM flow
+  USM --> |"processUserInput/processShellOutput"| LLMM
+  LLMM --> |"HTTPS chat completions"| LLM_API
+  LLM_API --> LLMM
+  LLMM --> |"tool_calls: run_command/hid_keyboard_*/gpio_set"| USM
+  LLMM --> |"status updates"| UIM
+
+  %% WiFi status and IP exposure
+  WIFIM --> |"IP/status"| WM
+  WIFIM --> |"IP/status"| UIM
+
+  %% Hardware control path from tools
+  LLMM --> |"gpio_set"| HWM
+  LLMM --> |"hid keyboard actions"| HIDM
 
 ### 2.2 模块职责
 
@@ -241,7 +332,6 @@ build_flags =
   -DCONFIG_MBEDTLS_SSL_MAX_CONTENT_LEN=16384
   -DCORE_DEBUG_LEVEL=4                    # 详细日志
   -DARDUINOJSON_USE_PSRAM=1               # JSON 使用 PSRAM
-  # 已移除 MSC：当前架构不使用 USB MSC（U 盘模拟）
   -DARDUINO_USB_HID_ON_BOOT=1             # USB HID 启动
 ```
 
@@ -253,9 +343,9 @@ build_flags =
 |--------|------|--------|----------|------|------|
 | nvs | data | nvs | 0x9000 | 20K | NVS 存储 |
 | otadata | data | ota | 0xE000 | 8K | OTA 数据 |
-| app0 | app | ota_0 | 0x10000 | 6M | 应用程序 |
+| app0 | app | ota_0 | 0x10000 | 4M | 应用程序 |
 | app1 | app | ota_1 | 0x610000 | 6M | OTA 备份 |
-| spiffs | data | spiffs | 0xC10000 | 3.9M | LittleFS 文件系统 |
+| spiffs | data | spiffs | 0xC10000 | 8M | LittleFS 文件系统 |
 
 ---
 
@@ -1442,25 +1532,25 @@ processHostMessage(buffer)
 ├─────────────────────────────────────────────┤
 │ DRAM (512 KB)                               │
 │ ├─ FreeRTOS 堆                              │
-│ ├─ 全局变量                                 │
-│ ├─ 任务栈                                   │
-│ └─ 网络缓冲区                               │
+│ ├─ 全局变量                                  │
+│ ├─ 任务栈                                    │
+│ └─ 网络缓冲区                                │
 ├─────────────────────────────────────────────┤
 │ PSRAM (8 MB)                                │
-│ ├─ LLM 请求/响应队列                        │
-│ ├─ 对话历史（ConversationHistory）          │
-│ ├─ JSON 文档缓冲区（ArduinoJson）           │
-│ ├─ HTTPS 响应缓冲区                         │
-│ └─ 临时大对象                               │
+│ ├─ LLM 请求/响应队列                         │
+│ ├─ 对话历史（ConversationHistory）           │
+│ ├─ JSON 文档缓冲区（ArduinoJson）            │
+│ ├─ HTTPS 响应缓冲区                          │
+│ └─ 临时大对象                                │
 ├─────────────────────────────────────────────┤
 │ Flash (16 MB)                               │
-│ ├─ 程序代码（6 MB × 2，OTA）               │
-│ ├─ LittleFS 文件系统（3.9 MB）             │
+│ ├─ 程序代码（4 MB）                          │
+│ ├─ LittleFS 文件系统（8 MB）                 │
 │ │  ├─ config.json                           │
 │ │  ├─ index.html.gz                         │
 │ │  ├─ style.css.gz                          │
 │ │  └─ script.js.gz                          │
-│ └─ NVS 存储（20 KB）                        │
+│ └─ NVS 存储（20 KB）                         │
 └─────────────────────────────────────────────┘
 ```
 
@@ -1985,18 +2075,3 @@ usbShellManager.sendAiResponseToHost("req-124", "当前目录的文件列表：.
 - [ESPAsyncWebServer 文档](https://github.com/me-no-dev/ESPAsyncWebServer)
 - [OpenAI API 文档](https://platform.openai.com/docs/api-reference)
 - [DeepSeek API 文档](https://platform.deepseek.com/api-docs/)
-
----
-
-## 变更历史
-
-| 版本 | 日期 | 变更内容 |
-|------|------|----------|
-| 1.0 | 2025-01-15 | 初始版本 |
-| 2.0 | 2025-10-10 | 添加对话历史功能、内存优化 |
-| 3.0 | 2025-10-12 | 完善技术规格文档、添加 API 参考 |
-
----
-
-**文档结束**
-
