@@ -152,27 +152,29 @@ flowchart LR
 1) 准备环境
 - VS Code + PlatformIO 插件
 - Python 3（用于运行打包脚本）
-
-2) 拉取依赖并编译固件
+2) 添加配置：
+- 在config_manager.cpp中使用自己的API key和WiFi信息替换掉占位符。
+- 添加需要的模型名称（可选）
+3) 拉取依赖并编译固件
 - 在 VS Code/PlatformIO 中打开工程
 - 构建固件：pio run
 
-3) 准备 LittleFS 数据（内置 Web 与 Agent）
+4) 准备 LittleFS 数据（内置 Web 与 Agent）
 - 运行：python compress_files.py
   - 生成 data/index.html.gz、data/style.css.gz、data/script.js.gz
   - 复制/压缩主机代理到 data/agent/noox-host-agent.exe（可选使用 UPX）
 - 上传 LittleFS：pio run --target uploadfs
 
-4) 烧录固件并连接设备
+5) 烧录固件并连接设备
 - 上传固件：pio run --target upload
 - 通过 Type‑C 连接到主机，系统会识别为 HID + CDC 设备
 
-5) 配置 WiFi
+6) 配置 WiFi
 - 首次启动由设备通过 HID 注入脚本，引导主机填入 WiFi 凭证（SSID|Password）
 - 打开浏览器访问设备 IP（OLED 状态页可查看），进入 Web UI 配置 WiFi
 
 
-6) 自动下载并运行主机代理
+7) 自动下载并运行主机代理
 - 设备通过 HID 打开 PowerShell，执行 Invoke‑WebRequest 从 http://<设备IP>/api/agent/download?platform=windows 下载 agent 到临时目录并启动
 - 代理与设备通过 USB CDC 建立 JSON 信道，开始交互
 
