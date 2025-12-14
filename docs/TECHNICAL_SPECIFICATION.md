@@ -2056,7 +2056,7 @@ usbShellManager.sendAiResponseToHost("req-124", "当前目录的文件列表：.
 | GPIO | General Purpose Input/Output | 通用输入输出 |
 | I2C | Inter-Integrated Circuit | 集成电路间总线 |
 | SPI | Serial Peripheral Interface | 串行外设接口 |
-| FreeRTOS | Free Real-Time Operating System | 免费实时操作系统 |
+| FreeRTOS | Free Real-Time Operating System | 实时操作系统 |
 | WebSocket | Web Socket Protocol | Web 套接字协议 |
 | JSON | JavaScript Object Notation | JavaScript 对象表示法 |
 | API | Application Programming Interface | 应用程序编程接口 |
