@@ -10,7 +10,7 @@ NOOX 已获得 [Open Source Hardware Association (OSHWA) 认证](https://certifi
 - 硬件开源链接：[OSHWLab / 立创开源硬件平台](https://oshwhub.com/hgyzqxt/noox)
 
 <p align="center">
-  <img src="docs/images/certification-mark-CN000025-wide.png" alt="OSHWA certification mark" width="550" />
+  <img src="docs/images/certification-mark-CN000025-wide.png" alt="OSHWA certification mark" width="500" />
 </p>
 
 ## 关键特性
