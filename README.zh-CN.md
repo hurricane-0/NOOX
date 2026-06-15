@@ -4,13 +4,14 @@
 
 NOOX 是一套面向“外接硬件 + 桌面自动化 + 大模型”场景的开源方案，强调即插即用与可移植性。基于 ESP32-S3，设备通过 USB HID + CDC 接入任意主机，内置 Web 控制台与 LLM 自主规划执行能力；主机侧由 NOOX Host Agent 与设备进行 USB CDC JSON 交互，跨平台执行 Shell 并反馈结果。
 
-## OSHWA 官方认证
-
-NOOX 已获得 [Open Source Hardware Association (OSHWA) 官方认证](https://certification.oshwa.org/cn000025.html)。
+NOOX 已获得 [Open Source Hardware Association (OSHWA) 认证](https://certification.oshwa.org/cn000025.html)。
 
 - OSHWA UID：`CN000025`
+- 硬件开源链接：[OSHWLab / 立创开源硬件平台](https://oshwhub.com/hgyzqxt/noox)
 
-![OSHWA certification mark](docs/images/certification-mark-CN000025-stacked.png)
+<p align="center">
+  <img src="docs/images/certification-mark-CN000025-stacked.png" alt="OSHWA certification mark" width="220" />
+</p>
 
 ## 关键特性
 
